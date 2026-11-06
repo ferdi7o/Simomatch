@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+.pytest_cache/
+.kivy_runtime/
+.idea/
+smoke_*.png
+data/
+.test_runtime/
+.smoke_runtime/

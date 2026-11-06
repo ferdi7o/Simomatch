@@ -1,0 +1,65 @@
+"""Run with python main.py. Keep Kivy runtime files inside this project."""
+import os
+from pathlib import Path
+
+os.environ['KIVY_HOME'] = str(Path(__file__).resolve().parent / '.kivy_runtime')
+
+from kivy.config import Config
+from kivy.utils import platform
+from config import WINDOW_SIZE
+
+if platform not in ('android', 'ios'):
+    Config.set('graphics', 'width', str(WINDOW_SIZE[0]))
+    Config.set('graphics', 'height', str(WINDOW_SIZE[1]))
+Config.set('graphics', 'maxfps', '120')
+
+from kivy.app import App
+from kivy.core.window import Window
+from screens.router import AppRouter
+from services.team_store import TeamStore
+from services.file_picker import create_file_picker
+from services.audio import AudioManager
+
+
+class SimomatchApp(App):
+    def build(self):
+        self.title = 'Simomatch'
+        Window.softinput_mode = 'below_target'
+        # Desktop data stays within the project; Android uses private app storage.
+        data_dir = self.user_data_dir if platform == 'android' else Path(__file__).resolve().parent / 'data'
+        store = TeamStore(data_dir)
+        self.audio = AudioManager()
+        self.router = AppRouter(store, create_file_picker(platform, data_dir), audio=self.audio)
+        Window.bind(on_keyboard=self.on_keyboard)
+        return self.router
+
+    def on_keyboard(self, window, key, *_):
+        if key == 27 and self.router.current != 'menu':
+            self.router.back()
+            return True
+        return False
+
+    def on_stop(self):
+        Window.unbind(on_keyboard=self.on_keyboard)
+        if hasattr(self, 'router'):
+            self.router.dispose()
+        if hasattr(self, 'audio'):
+            self.audio.close()
+
+    def on_pause(self):
+        if hasattr(self, 'audio'):
+            for session in self.audio.sessions:
+                session.stop()
+            self.audio.stop_effect('button')
+        return True
+
+    def on_resume(self):
+        view = getattr(getattr(self, 'router', None), 'match_view', None)
+        if view:
+            view._first_frame = True
+            if self.router.current == 'match' and view.engine.state == 'countdown':
+                self.audio.play('countdown')
+
+
+if __name__ == '__main__':
+    SimomatchApp().run()

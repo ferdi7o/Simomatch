@@ -1,0 +1,17 @@
+"""Simulation units are independent of screen pixels (positive Y points up)."""
+WINDOW_SIZE = (450, 800)
+ARENA_RADIUS = 400.0
+DISK_RADIUS = 60.0
+MIN_DISK_RADIUS = 18.0
+MAX_DISK_RADIUS = 80.0
+MIN_SPEED = 680.0
+MAX_SPEED = 1360.0
+START_SPEED_MIN = 880.0
+START_SPEED_MAX = 1200.0
+FIXED_DT = 1 / 120
+MATCH_SECONDS = 55.0
+COUNTDOWN_SECONDS = 3.0
+FINAL_SECONDS = 3.0
+GOAL_HALF_ANGLE = 0.27
+GOAL_SPEED = -0.48  # Radians/second; negative is clockwise.
+POST_RADIUS = 7.0
