@@ -16,7 +16,7 @@ ve MP3 isteğe bağlıdır. Logo yoksa renkli disk ve kısa takım adı gösteri
 Takım adı en fazla 40 karakterdir; boşluk ve büyük/küçük harf farkıyla aynı adı
 tekrar kaydetmek engellenir. Takımlar düzenlenebilir ve silinebilir.
 
-Windows'ta veriler proje içindeki `data/teams.json` ve `data/assets/` altında
+Windows'ta takım verileri proje içindeki `data/teams.json` ve `data/assets/` altında
 tutulur; bu klasör kalıcıdır ve Git'e dahil edilmez. Android'de özel uygulama
 veri dizini kullanılır. Kaydetme, medya dosyalarını benzersiz adlarla kopyalar ve
 JSON'u atomik olarak değiştirir. Bozuk JSON değiştirilmeden önce yedeklenir.
@@ -32,7 +32,7 @@ kaydedildiğinde kalıcı `assets/` kopyası oluşturulur. Android uygulama etki
 pyjnius/python-for-android entegrasyonu gerçek cihazda henüz doğrulanmamıştır.
 
 Maç kurulumunda iki bağımsız logo/top yarıçapı (18–80 simülasyon birimi, varsayılan 60), süre
-(10–600 saniye, varsayılan 55), beş hazır tema veya özel PNG/JPG arka plan seçilir.
+(10–600 saniye, varsayılan 55), bağımsız arena teması ve arka plan seçilir.
 Kale dönüş hızı varsayılan 90°/s, ayar aralığı 30–180°/s'dir. Seçilen derece
 değeri motorda saat yönünde radyan/saniyeye çevrilir ve yeniden başlatmada korunur.
 Direk hızına göre uyarlanan fizik alt adımları yüksek dönüş hızında da çalışır.
@@ -43,21 +43,41 @@ Direkler, file, gol algısı ve tema maskeleri aynı geometriyi kullanır. Boyut
 başlatmada korunur. Dar kale açıklığı, çapı açıklıktan büyük logoları geçirmez.
 Takım boyutu fizik yarıçapını da değiştirir. PNG/JPG logoların en-boy oranı ve
 PNG şeffaflığı korunur; görsel fizik diskiyle aynı çapta dairesel maskeyle çizilir.
-Logo çerçevesi veya logonun arkasında renkli dolgu yoktur. Özel arka plan yalnızca mevcut kurulum
-için seçilir; takım kaydı gibi JSON'a yazılmaz. Ekrandaki geri düğmesi veya
+Logo çerçevesi veya logonun arkasında renkli dolgu yoktur. Ekrandaki geri düğmesi veya
 Escape/Android geri tuşu önceki akışa döner; maçtan ayrılınca fizik saati durur.
 
 Tema kimlikleri: `neon_purple`, `fire_arena`, `electric_blue`, `rainbow_neon`,
 `emerald_arena`. Görsel tanımlar `services/arena_themes.py` içinde veri olarak
 tutulur: koyu arka plan rengi, isteğe bağlı görsel yolu, çember paleti, glow,
 atmosfer ve hareket/temas efektleri. Yeni tema eklemek için bu kayıt genişletilir.
-Neon Purple önce `assets/background1.png` dosyasını arar. Klasörde mevcut dosyanın
-adı `assets/backgraund1.png` olduğundan bu dosya yeniden adlandırılmadan yedek
-olarak desteklenir; ardından eski `assets/backgrounds/neon_purple.png` yolu denenir. Diğer temalar
-da aynı klasörde kendi kimlikleriyle adlandırılan PNG dosyalarını arar. Eksik veya
-bozuk görseller koyu tema rengine geri döner; görsel eklemek zorunlu değildir.
-Arka plan merkezden kırpılarak, oranı bozulmadan ekranı doldurur. Seçilen özel
-görsel tema arka planını geçersiz kılar; çember ve efekt paleti seçili temadan gelir.
+Yeni ARKA PLAN galerisi `services/backgrounds.py` içindeki beş bağımsız kaydı kullanır:
+Neon Stadium (`assets/background1.png`), Stadium Night (`assets/backgrounds/stadium_night.png`),
+Rainy Stadium (`assets/backgrounds/stadium_rain.png`), Classic Football
+(`assets/backgrounds/retro_pitch.png`) ve Cosmic Arena (`assets/backgrounds/cosmic_stadium.png`).
+`assets/backgraund/` altındaki aynı isimli görseller de desteklenir. Eksik/bozuk
+görseller önce Neon Stadium dosyasına, ardından `assets/backgraund1.png` veya
+`assets/backgraund/backgraund1.png` dosyasına, o da yoksa koyu varsayılana döner.
+Dosya isimleri değiştirilmez. `background_id` içermeyen eski maç ayarlarında önceki
+temaya bağlı arka plan davranışı ve `background` yolu desteklenir.
+Tema ve arka plan tercihleri Kivy `App.user_data_dir` içindeki `match_preferences.json`
+dosyasında ayrı alanlarda saklanır; mevcut takım veri konumu ve takım JSON'u değiştirilmez.
+BENİM ARKA PLANLARIM galerisi aynı dizindeki `custom_backgrounds.json` kayıtlarını kullanır:
+her kayıtta UUID, görünen isim, göreli `path` ve UTC `added_at` tarihi bulunur.
+PNG/JPG/JPEG dosyaları `custom_backgrounds/<UUID>.<uzantı>` olarak kopyalanır.
+Aynı isimli görseller eklenebilir. Android `content://` belgeleri mevcut SAF servisiyle
+önce okunabilir geçici kopyaya alınır; URI bir yerel dosya yolu gibi kullanılmaz.
+Yeni görsel otomatik seçilir, son seçim ID ile korunur. Hazır karta dönmek kitaplığı silmez.
+Her özel kartın SİL düğmesi onay ister; yalnızca UUID'li uygulama kopyası ve kaydı
+silinir. Kullanıcının orijinal fotoğrafı ve hazır görseller silinmez. Seçili görsel
+silinirse güvenli varsayılana dönülür; arena teması korunur. JSON atomik değiştirilir;
+bozuk kayıt korunup UUID'li dosyalar kurtarılır, sonraki yazmada yedek JSON oluşturulur.
+Eski `data/backgrounds/` kopyaları ve tercihler bir kez aktarılır; kaynaklar silinmez.
+Silinen eski görseller sonraki açılışta yeniden aktarılmaz.
+Arka plan merkezden kırpılarak, oranı bozulmadan ekranı doldurur. Önizlemeler en fazla
+144×256 pikseldir; özel önizlemeler `custom_backgrounds/<UUID>.thumb.png` olarak diskte
+saklanır. Sadece görünür özel kartlar texture tutar; önbellek 8 önizleme ve 2 tam boy
+texture ile sınırlıdır. Render
+sırasında dosya okunmaz. Çember ve efekt paleti yalnızca arena temasından gelir.
 Çember ve dönen kale her zaman Canvas üzerinde ayrı çizilir. Tema verileri fizik
 motoruna veya gol açıklığının geometrisine aktarılmaz.
 Dekoratif renk akışı ve glow darbeleri ayrı render saatinden ilerler; kale

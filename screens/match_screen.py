@@ -4,7 +4,7 @@ from kivy.clock import Clock
 from kivy.graphics import Color, Ellipse, Line, Rectangle
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
-from kivy.uix.button import Button
+from screens.glass_button import GlassButton
 from engine.match_engine import MatchEngine
 from services.media import load_texture
 from services.arena_themes import get_theme
@@ -16,6 +16,7 @@ from services.audio import play_button_sound
 from screens.announcements import Announcements, CardIndicators
 from screens.fire_particles import FireParticles
 from screens.electric_effects import ElectricEffects
+from services.backgrounds import TEXTURES, FALLBACK_COLOR
 
 
 class MatchScreen(FloatLayout):
@@ -43,15 +44,20 @@ class MatchScreen(FloatLayout):
         self.theme = get_theme(settings.theme if settings else 'neon_purple')
         self.fire_particles = FireParticles() if settings and settings.theme == 'fire_arena' else None
         self.electric_effects = ElectricEffects() if settings and settings.theme == 'electric_blue' else None
-        background_texture = load_texture(settings.background) if settings and settings.background else None
-        if background_texture is None:
+        independent_background = bool(settings and getattr(settings, 'background_id', ''))
+        loader = TEXTURES.texture if independent_background else load_texture
+        background_texture = loader(settings.background) if settings and settings.background else None
+        if background_texture is None and independent_background:
+            background_texture = TEXTURES.preset(settings.background_id)
+        if background_texture is None and not independent_background:
             for path in self.theme.image_paths:
                 background_texture = load_texture(path)
                 if background_texture is not None:
                     break
         self.background_texture = background_texture
         with self.canvas.before:
-            self.background_color = Color(*((1, 1, 1, 1) if background_texture else self.theme.background_color))
+            self.background_color = Color(*((1, 1, 1, 1) if background_texture else
+                                            FALLBACK_COLOR if independent_background else self.theme.background_color))
             self.background = Rectangle(texture=background_texture)
             Color(0, 0, 0, .35 if background_texture else 0)
             self.background_shade = Rectangle()
@@ -70,6 +76,8 @@ class MatchScreen(FloatLayout):
             if self.electric_effects:
                 self.canvas.add(self.electric_effects.canvas)
             self.effects = MatchEffects(self.theme.effects)
+            colors = [(.04, .22, .48), (.76, .1, .11)]
+            self.disk_shapes = [LogoDrawing(texture, color) for texture, color in zip(textures, colors)]
             Color(.8, .94, 1, .58)
             self.net = [Line(width=1) for _ in range(12)]
             Color(.7, .88, 1, .12)
@@ -77,8 +85,6 @@ class MatchScreen(FloatLayout):
             Color(1, 1, 1, 1)
             self.goal_frame = Line(width=2.2)
             self.posts = [Ellipse() for _ in range(2)]
-            colors = [(.04, .22, .48), (.76, .1, .11)]
-            self.disk_shapes = [LogoDrawing(texture, color) for texture, color in zip(textures, colors)]
             self.header_logos = [LogoDrawing(texture, color) for texture, color in zip(textures, colors)]
         self.score = self.make_label(bold=True)
         self.minute_label = self.make_label(color=(.4, 1, .7, 1))
@@ -96,12 +102,10 @@ class MatchScreen(FloatLayout):
         self.result_panel = ResultPanel(self.engine.teams, textures)
         self._result_snapshot = None
         self.add_widget(self.result_panel)
-        self.restart_button = Button(text='Yeniden başlat', size_hint=(None, None),
-                                     background_color=(.08, .5, .3, 1))
+        self.restart_button = GlassButton(text='Yeniden başlat', size_hint=(None, None))
         self.restart_button.bind(on_release=self.restart_match)
         self.add_widget(self.restart_button)
-        self.back_button = Button(text='‹ Maç ayarları', size_hint=(None, None),
-                                  background_normal='', background_color=(.14, .08, .24, 1))
+        self.back_button = GlassButton(text='‹ Maç ayarları', size_hint=(None, None))
         def leave(*args):
             play_button_sound()
             if on_back:

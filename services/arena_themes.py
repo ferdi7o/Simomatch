@@ -66,7 +66,7 @@ THEMES = {
         ((.65, .25, 1), (.95, .4, .9), (.45, .4, 1), (.92, .85, 1)),
         (.38, .12, .6), 1.05,
         EffectStyle(((.65, .4, 1), (1, .4, .8)), .18, (.9, .65, 1), (.85, .6, 1)),
-        background_fallbacks=('assets/backgraund1.png', 'assets/backgrounds/neon_purple.png'),
+        background_fallbacks=('assets/background/backgraund1.png', 'assets/backgraund1.png', 'assets/backgrounds/neon_purple.png'),
         layers=(SpriteLayer('assets/effects/neon_purple/ring.png'),)),
     'fire_arena': ArenaTheme(
         (.025, .008, .004, 1), 'assets/backgrounds/fire_arena.png',

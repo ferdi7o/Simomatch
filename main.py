@@ -19,23 +19,33 @@ from screens.router import AppRouter
 from services.team_store import TeamStore
 from services.file_picker import create_file_picker
 from services.audio import AudioManager
+from services.backgrounds import refresh_background_catalog
 
 
 class SimomatchApp(App):
     def build(self):
+        refresh_background_catalog()
         self.title = 'Simomatch'
         Window.softinput_mode = 'below_target'
         # Desktop data stays within the project; Android uses private app storage.
         data_dir = self.user_data_dir if platform == 'android' else Path(__file__).resolve().parent / 'data'
         store = TeamStore(data_dir)
         self.audio = AudioManager()
-        self.router = AppRouter(store, create_file_picker(platform, data_dir), audio=self.audio)
+        self.router = AppRouter(store, create_file_picker(platform, data_dir), audio=self.audio,
+                                background_data_dir=self.user_data_dir)
         Window.bind(on_keyboard=self.on_keyboard)
         return self.router
 
     def on_keyboard(self, window, key, *_):
-        if key == 27 and self.router.current != 'menu':
-            self.router.back()
+        if key == 27:
+            if self.router.current == 'menu':
+                menu = self.router.get_screen('menu')
+                if menu.exit_dialog:
+                    menu.cancel_exit()
+                else:
+                    menu.request_exit()
+            else:
+                self.router.back()
             return True
         return False
 
@@ -47,6 +57,8 @@ class SimomatchApp(App):
             self.audio.close()
 
     def on_pause(self):
+        if hasattr(self, 'router'):
+            self.router.get_screen('menu').emblem.stop()
         if hasattr(self, 'audio'):
             for session in self.audio.sessions:
                 session.stop()
@@ -54,6 +66,8 @@ class SimomatchApp(App):
         return True
 
     def on_resume(self):
+        if hasattr(self, 'router') and self.router.current == 'menu':
+            self.router.get_screen('menu').emblem.start()
         view = getattr(getattr(self, 'router', None), 'match_view', None)
         if view:
             view._first_frame = True
