@@ -11,6 +11,7 @@ from services.arena_themes import get_theme
 from screens.match_visuals import LogoDrawing, NeonRing, cover_coordinates
 from screens.match_effects import MatchEffects
 from screens.result_panel import ResultPanel
+from screens.arena_layers import ArenaLayers
 from services.audio import play_button_sound
 
 
@@ -20,7 +21,8 @@ class MatchScreen(FloatLayout):
         self.settings = settings
         self.engine = MatchEngine(duration=settings.duration,
                                   teams=(settings.home['name'], settings.away['name']),
-                                  radii=settings.radii) if settings else MatchEngine()
+                                  radii=settings.radii,
+                                  goal_speed_degrees=settings.goal_speed_degrees) if settings else MatchEngine()
         teams = (settings.home, settings.away) if settings else ()
         # Decode custom music before scheduling the match clock/countdown.
         self.audio_session = audio.create_session(teams, store) if audio else None
@@ -33,7 +35,10 @@ class MatchScreen(FloatLayout):
         self.theme = get_theme(settings.theme if settings else 'neon_purple')
         background_texture = load_texture(settings.background) if settings and settings.background else None
         if background_texture is None:
-            background_texture = load_texture(self.theme.image_path)
+            for path in self.theme.image_paths:
+                background_texture = load_texture(path)
+                if background_texture is not None:
+                    break
         self.background_texture = background_texture
         with self.canvas.before:
             self.background_color = Color(*((1, 1, 1, 1) if background_texture else self.theme.background_color))
@@ -47,7 +52,9 @@ class MatchScreen(FloatLayout):
                 self.atmosphere.append(Ellipse())
             Color(*self.theme.background_color[:3], .82)
             self.field = Ellipse()
-            self.ring = NeonRing(self.theme.palette, self.theme.glow_strength)
+            self.ring = NeonRing(self.theme.palette, self.theme.glow_strength,
+                                 self.theme.decorative_speed_degrees, self.theme.pulse_hz)
+            self.arena_layers = ArenaLayers(self.theme.layers)
             self.effects = MatchEffects(self.theme.effects)
             Color(.8, .94, 1, .58)
             self.net = [Line(width=1) for _ in range(12)]
@@ -161,6 +168,7 @@ class MatchScreen(FloatLayout):
         e, s = self.engine, self.scale
         g = e.goal
         self.ring.layout(g, self.project, s)
+        self.arena_layers.layout(g, self.project)
         self.effects.draw(self.project, s)
         p, q = g.posts
         depth = 100.
@@ -209,6 +217,8 @@ class MatchScreen(FloatLayout):
         if self._first_frame:
             dt, self._first_frame = 0., False
         self.engine.advance(dt)
+        self.ring.advance(dt)
+        self.arena_layers.advance(dt)
         if self.audio_session:
             self.audio_session.update(self.engine)
         self.effects.update(self.engine, dt)

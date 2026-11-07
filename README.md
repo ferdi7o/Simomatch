@@ -33,6 +33,9 @@ pyjnius/python-for-android entegrasyonu gerçek cihazda henüz doğrulanmamışt
 
 Maç kurulumunda iki bağımsız logo/top yarıçapı (18–80 simülasyon birimi, varsayılan 60), süre
 (10–600 saniye, varsayılan 55), beş hazır tema veya özel PNG/JPG arka plan seçilir.
+Kale dönüş hızı varsayılan 90°/s, ayar aralığı 30–180°/s'dir. Seçilen derece
+değeri motorda saat yönünde radyan/saniyeye çevrilir ve yeniden başlatmada korunur.
+Direk hızına göre uyarlanan fizik alt adımları yüksek dönüş hızında da çalışır.
 Takım boyutu fizik yarıçapını da değiştirir. PNG/JPG logoların en-boy oranı ve
 PNG şeffaflığı korunur; görsel fizik diskiyle aynı çapta dairesel maskeyle çizilir.
 Logo çerçevesi veya logonun arkasında renkli dolgu yoktur. Özel arka plan yalnızca mevcut kurulum
@@ -43,13 +46,19 @@ Tema kimlikleri: `neon_purple`, `fire_arena`, `electric_blue`, `rainbow_neon`,
 `emerald_arena`. Görsel tanımlar `services/arena_themes.py` içinde veri olarak
 tutulur: koyu arka plan rengi, isteğe bağlı görsel yolu, çember paleti, glow,
 atmosfer ve hareket/temas efektleri. Yeni tema eklemek için bu kayıt genişletilir.
-Örneğin `assets/backgrounds/neon_purple.png` varsa otomatik yüklenir. Diğer temalar
+Neon Purple önce `assets/background1.png` dosyasını arar. Klasörde mevcut dosyanın
+adı `assets/backgraund1.png` olduğundan bu dosya yeniden adlandırılmadan yedek
+olarak desteklenir; ardından eski `assets/backgrounds/neon_purple.png` yolu denenir. Diğer temalar
 da aynı klasörde kendi kimlikleriyle adlandırılan PNG dosyalarını arar. Eksik veya
 bozuk görseller koyu tema rengine geri döner; görsel eklemek zorunlu değildir.
 Arka plan merkezden kırpılarak, oranı bozulmadan ekranı doldurur. Seçilen özel
 görsel tema arka planını geçersiz kılar; çember ve efekt paleti seçili temadan gelir.
 Çember ve dönen kale her zaman Canvas üzerinde ayrı çizilir. Tema verileri fizik
 motoruna veya gol açıklığının geometrisine aktarılmaz.
+Dekoratif renk akışı ve glow darbeleri ayrı render saatinden ilerler; kale
+hızı bunları hızlandırmaz. İsteğe bağlı PNG/WebP atlas katmanları için
+[efekt dosyası sözleşmesine](assets/effects/README.md) bakın. Henüz alev, yıldırım
+ve enerji atlasları yoktur; mevcut çizimler yalnızca stilize neon/parçacık efektidir.
 
 Windows penceresi 450×800 açılır. Simülasyon koordinatlarında merkez (0, 0),
 yukarı yön +Y ve arena yarıçapı 400 birimdir. Ekran boyutu yalnızca çizim ölçeğini

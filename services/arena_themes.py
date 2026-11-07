@@ -13,6 +13,24 @@ class EffectStyle:
 
 
 @dataclass(frozen=True)
+class SpriteLayer:
+    """Optional transparent full-ring atlas, read left-to-right, top-to-bottom.
+
+    Artistic flames/lightning must come from actual assets, not colored lines.
+    Layer scales only control visual thickness; the physical arena is unchanged.
+    """
+    image: str
+    columns: int = 1
+    rows: int = 1
+    frames: int = 1
+    fps: float = 16.
+    inner_scale: float = .86
+    outer_scale: float = 1.14
+    opacity: float = .85
+    rotation_degrees: float = 0.
+
+
+@dataclass(frozen=True)
 class ArenaTheme:
     background_color: tuple
     background_image: str
@@ -20,37 +38,55 @@ class ArenaTheme:
     atmosphere_color: tuple
     glow_strength: float = 1.
     effects: EffectStyle = EffectStyle()
+    background_fallbacks: tuple = ()
+    decorative_speed_degrees: float = 22.
+    pulse_hz: float = .8
+    layers: tuple = ()
 
     @property
     def image_path(self):
         return Path(__file__).resolve().parents[1] / self.background_image
 
+    @property
+    def image_paths(self):
+        root = Path(__file__).resolve().parents[1]
+        return tuple(root / path for path in (self.background_image, *self.background_fallbacks))
+
 
 THEMES = {
     'neon_purple': ArenaTheme(
-        (.012, .008, .025, 1), 'assets/backgrounds/neon_purple.png',
+        (.012, .008, .025, 1), 'assets/background1.png',
         ((.65, .25, 1), (.95, .4, .9), (.45, .4, 1), (.92, .85, 1)),
         (.38, .12, .6), 1.05,
-        EffectStyle(((.65, .4, 1), (1, .4, .8)), .18, (.9, .65, 1), (.85, .6, 1))),
+        EffectStyle(((.65, .4, 1), (1, .4, .8)), .18, (.9, .65, 1), (.85, .6, 1)),
+        background_fallbacks=('assets/backgraund1.png', 'assets/backgrounds/neon_purple.png'),
+        layers=(SpriteLayer('assets/effects/neon_purple/ring.png'),)),
     'fire_arena': ArenaTheme(
         (.025, .008, .004, 1), 'assets/backgrounds/fire_arena.png',
         ((1, .15, .04), (1, .42, .06), (1, .82, .18), (1, .95, .65)),
         (.7, .16, .025), 1.15,
-        EffectStyle(((1, .4, .08), (1, .8, .2)), .16, (1, .7, .18), (1, .45, .15), 8)),
+        EffectStyle(((1, .4, .08), (1, .8, .2)), .16, (1, .7, .18), (1, .45, .15), 8),
+        decorative_speed_degrees=16., pulse_hz=2.3,
+        layers=(SpriteLayer('assets/effects/fire_arena/flames.webp', columns=8, frames=8, fps=20),)),
     'electric_blue': ArenaTheme(
         (.004, .012, .025, 1), 'assets/backgrounds/electric_blue.png',
         ((.06, .4, 1), (.08, .8, 1), (.5, .95, 1), (.9, .98, 1)),
         (.04, .35, .65), 1.1,
-        EffectStyle(((.1, .7, 1), (.55, .9, 1)), .20, (.6, .9, 1), (.3, .85, 1))),
+        EffectStyle(((.1, .7, 1), (.55, .9, 1)), .20, (.6, .9, 1), (.3, .85, 1)),
+        decorative_speed_degrees=-28., pulse_hz=3.5,
+        layers=(SpriteLayer('assets/effects/electric_blue/lightning.webp', columns=8, frames=8, fps=18),)),
     'rainbow_neon': ArenaTheme(
         (.006, .014, .012, 1), 'assets/backgrounds/rainbow_neon.png',
         ((.12, 1, .55), (1, .86, .18), (1, .38, .10), (.12, .6, 1), (.9, .98, 1)),
-        (.04, .5, .28)),
+        (.04, .5, .28), decorative_speed_degrees=35.,
+        layers=(SpriteLayer('assets/effects/rainbow_neon/ring.png', rotation_degrees=12),)),
     'emerald_arena': ArenaTheme(
         (.004, .02, .012, 1), 'assets/backgrounds/emerald_arena.png',
         ((.06, .8, .3), (.18, 1, .55), (.55, 1, .8), (.9, 1, .95)),
         (.03, .5, .2), .9,
-        EffectStyle(((.15, 1, .5), (.6, 1, .85)), .18, (.65, 1, .6), (.4, 1, .75))),
+        EffectStyle(((.15, 1, .5), (.6, 1, .85)), .18, (.65, 1, .6), (.4, 1, .75)),
+        decorative_speed_degrees=12., pulse_hz=.6,
+        layers=(SpriteLayer('assets/effects/emerald_arena/energy.webp', columns=8, frames=8, fps=16),)),
 }
 
 # Existing in-memory callers can retain the old labels; no user data migration.

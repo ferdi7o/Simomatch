@@ -1,4 +1,5 @@
 """Simulation units are independent of screen pixels (positive Y points up)."""
+from math import radians
 WINDOW_SIZE = (450, 800)
 ARENA_RADIUS = 400.0
 DISK_RADIUS = 60.0
@@ -13,5 +14,8 @@ MATCH_SECONDS = 55.0
 COUNTDOWN_SECONDS = 3.0
 FINAL_SECONDS = 3.0
 GOAL_HALF_ANGLE = 0.27
-GOAL_SPEED = -0.48  # Radians/second; negative is clockwise.
+GOAL_SPEED_DEGREES = 90.0
+MIN_GOAL_SPEED_DEGREES = 30.0
+MAX_GOAL_SPEED_DEGREES = 180.0
+GOAL_SPEED = -radians(GOAL_SPEED_DEGREES)  # Clockwise, radians/second.
 POST_RADIUS = 7.0

@@ -1,5 +1,5 @@
 """Reusable Canvas drawings: no widgets or new instructions during rendering."""
-from math import pi, sin, cos
+from math import pi, sin, cos, radians
 from kivy.graphics import (Color, Ellipse, Rectangle, Line, StencilPush,
                            StencilUse, StencilUnUse, StencilPop)
 
@@ -54,23 +54,44 @@ class LogoDrawing:
 
 class NeonRing:
     """25 short colored arcs, three translucent strokes per arc for soft glow."""
-    def __init__(self, palette=None, glow_strength=1.):
+    def __init__(self, palette=None, glow_strength=1., decorative_speed_degrees=22., pulse_hz=.8):
         self.palette = tuple(palette or NEON)
         self.glow_strength = glow_strength
+        self.decorative_speed = radians(decorative_speed_degrees)
+        self.pulse_hz, self.time, self.phase = pulse_hz, 0., 0.
         self.segments = []
+        self.colors = []
         for index in range(25):
             rgb = self.palette[index % len(self.palette)]
             strokes = []
+            colors = []
             for alpha, width in ((.055, 9), (.17, 4), (.95, 1.25)):
-                Color(*rgb, min(1., alpha*(glow_strength if width > 2 else 1)))
+                colors.append(Color(*rgb, min(1., alpha*(glow_strength if width > 2 else 1))))
                 strokes.append(Line(width=width))
             self.segments.append(strokes)
+            self.colors.append(colors)
+
+    def advance(self, dt):
+        """Render time only. Never use the goal angle to advance decoration."""
+        self.time += max(0., dt)
+        self.phase = (self.phase+self.decorative_speed*max(0., dt)) % (2*pi)
+
+    def color_at(self, angle):
+        value = ((angle-self.phase)/(2*pi)*len(self.palette)) % len(self.palette)
+        index, fraction = int(value), value % 1
+        a, b = self.palette[index], self.palette[(index+1) % len(self.palette)]
+        return tuple(x+(y-x)*fraction for x, y in zip(a, b))
 
     def layout(self, goal, project, scale):
         # Every arc shares exact post angles, so no glow crosses the mouth.
         start = goal.angle+goal.half_angle
         length = 2*pi-2*goal.half_angle
         for index, strokes in enumerate(self.segments):
+            angle = start+length*(index+.5)/len(self.segments)
+            rgb = self.color_at(angle)
+            pulse = .85+.15*sin(self.time*2*pi*self.pulse_hz+angle*3)
+            for color, alpha in zip(self.colors[index], (.055, .17, .95)):
+                color.rgba = (*rgb, min(1., alpha*pulse*(self.glow_strength if alpha < .9 else 1)))
             points = []
             for i in range(9):
                 angle = start+length*(index+i/8)/len(self.segments)

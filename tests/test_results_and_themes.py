@@ -79,7 +79,7 @@ def test_final_columns_scroll_without_overflow(view, counts, size):
 def test_exact_five_theme_ids_and_legacy_names():
     from pathlib import Path
     assert set(THEMES) == {'neon_purple', 'fire_arena', 'electric_blue', 'rainbow_neon', 'emerald_arena'}
-    assert get_theme('neon_purple').image_path == Path(__file__).resolve().parents[1]/'assets/backgrounds/neon_purple.png'
+    assert get_theme('neon_purple').image_path == Path(__file__).resolve().parents[1]/'assets/background1.png'
     assert settings('Neon mor').theme == 'neon_purple'
     assert settings('Okyanus').theme == 'electric_blue'
     with pytest.raises(ValueError):
@@ -135,7 +135,7 @@ def test_theme_background_missing_corrupt_and_present(monkeypatch, png_file, tmp
     for path in (tmp_path/'missing.png', tmp_path/'broken.png', png_file):
         if path.name == 'broken.png':
             path.write_bytes(b'not a PNG')
-        monkeypatch.setitem(THEMES, 'neon_purple', replace(original, background_image=str(path)))
+        monkeypatch.setitem(THEMES, 'neon_purple', replace(original, background_image=str(path), background_fallbacks=()))
         view = MatchScreen(settings=settings(), size=(450, 800))
         try:
             if path == png_file:

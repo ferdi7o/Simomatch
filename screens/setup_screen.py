@@ -8,7 +8,8 @@ from kivy.uix.textinput import TextInput
 from screens.common import Page, button, caption
 from services.media import load_texture
 from services.match_settings import MatchSettings, THEMES
-from config import DISK_RADIUS, MIN_DISK_RADIUS, MAX_DISK_RADIUS
+from config import (DISK_RADIUS, MIN_DISK_RADIUS, MAX_DISK_RADIUS, GOAL_SPEED_DEGREES,
+                    MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES)
 
 
 class SetupScreen(Page):
@@ -45,6 +46,13 @@ class SetupScreen(Page):
         self.duration_input = TextInput(text='55', multiline=False, input_filter='int',
                                         size_hint_y=None, height=dp(44))
         self.content.add_widget(self.duration_input)
+        self.goal_speed_label = caption(f'KALE DÖNÜŞ HIZI · {GOAL_SPEED_DEGREES:g}°/s', bold=True)
+        self.content.add_widget(self.goal_speed_label)
+        self.goal_speed_slider = Slider(min=MIN_GOAL_SPEED_DEGREES, max=MAX_GOAL_SPEED_DEGREES,
+                                        value=GOAL_SPEED_DEGREES, step=1, size_hint_y=None, height=dp(42))
+        self.goal_speed_slider.bind(value=lambda _, value: setattr(
+            self.goal_speed_label, 'text', f'KALE DÖNÜŞ HIZI · {value:.0f}°/s'))
+        self.content.add_widget(self.goal_speed_slider)
         self.content.add_widget(caption('ARENA TEMASI', bold=True))
         self.theme = Spinner(text='neon_purple', values=tuple(THEMES), size_hint_y=None, height=dp(42),
                              background_normal='', background_color=(.16, .12, .24, 1))
@@ -109,7 +117,8 @@ class SetupScreen(Page):
                 raise ValueError('Maç süresini saniye olarak girin (10–600).') from None
             settings = MatchSettings(*teams, radii=tuple(s.value for s in self.sliders),
                                      duration=duration, theme=self.theme.text,
-                                     background=self.background_path)
+                                     background=self.background_path,
+                                     goal_speed_degrees=self.goal_speed_slider.value)
             self.router.start_match(settings)
         except (ValueError, OSError) as exc:
             self.status.text = str(exc) if str(exc) else 'Geçerli bir maç süresi girin.'

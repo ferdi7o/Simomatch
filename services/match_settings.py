@@ -1,7 +1,8 @@
 """Validated match configuration shared by forms and the simulation."""
 from dataclasses import dataclass
 from math import isfinite
-from config import DISK_RADIUS, MIN_DISK_RADIUS, MAX_DISK_RADIUS
+from config import (DISK_RADIUS, MIN_DISK_RADIUS, MAX_DISK_RADIUS, GOAL_SPEED_DEGREES,
+                    MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES)
 from services.arena_themes import THEMES, theme_id
 
 
@@ -13,6 +14,7 @@ class MatchSettings:
     duration: float = 55.
     theme: str = 'neon_purple'
     background: str = ''
+    goal_speed_degrees: float = GOAL_SPEED_DEGREES
 
     def __post_init__(self):
         if self.home['id'] == self.away['id'] or self.home['name'] == self.away['name']:
@@ -22,3 +24,5 @@ class MatchSettings:
         if len(self.radii) != 2 or any(not isfinite(r) or not MIN_DISK_RADIUS <= r <= MAX_DISK_RADIUS for r in self.radii):
             raise ValueError(f'Logo boyutları {MIN_DISK_RADIUS:g}–{MAX_DISK_RADIUS:g} arasında olmalıdır.')
         object.__setattr__(self, 'theme', theme_id(self.theme))
+        if not isfinite(self.goal_speed_degrees) or not MIN_GOAL_SPEED_DEGREES <= self.goal_speed_degrees <= MAX_GOAL_SPEED_DEGREES:
+            raise ValueError('Kale dönüş hızı 30–180 derece/saniye arasında olmalıdır.')

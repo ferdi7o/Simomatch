@@ -1,10 +1,11 @@
 """Fixed-step lifecycle, scores and in-memory goal history."""
 import random
-from math import cos, sin, pi, hypot, isfinite, ceil
+from math import cos, sin, pi, hypot, isfinite, ceil, radians
 from collections import deque
 from config import (FIXED_DT, MATCH_SECONDS, COUNTDOWN_SECONDS, FINAL_SECONDS,
                     DISK_RADIUS, MIN_DISK_RADIUS, MAX_DISK_RADIUS, MAX_SPEED,
-                    START_SPEED_MIN, START_SPEED_MAX, MIN_SPEED)
+                    START_SPEED_MIN, START_SPEED_MAX, MIN_SPEED, GOAL_SPEED_DEGREES,
+                    MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES)
 from engine.physics import Disk, collide_disks
 from engine.arena import Arena
 from engine.goal import Goal
@@ -12,15 +13,18 @@ from engine.goal import Goal
 
 class MatchEngine:
     def __init__(self, seed=None, duration=MATCH_SECONDS, teams=('FB', 'GS'),
-                 radii=(DISK_RADIUS, DISK_RADIUS)):
+                 radii=(DISK_RADIUS, DISK_RADIUS), goal_speed_degrees=GOAL_SPEED_DEGREES):
         if len(teams) != 2 or len(set(teams)) != 2 or not all(teams):
             raise ValueError('İki farklı takım seçilmelidir.')
         if not isfinite(duration) or duration <= 0:
             raise ValueError('Maç süresi pozitif olmalıdır.')
         if len(radii) != 2 or any(not isfinite(r) or not MIN_DISK_RADIUS <= r <= MAX_DISK_RADIUS for r in radii):
             raise ValueError(f'Disk yarıçapı {MIN_DISK_RADIUS:g}–{MAX_DISK_RADIUS:g} arasında olmalıdır.')
+        if not isfinite(goal_speed_degrees) or not MIN_GOAL_SPEED_DEGREES <= goal_speed_degrees <= MAX_GOAL_SPEED_DEGREES:
+            raise ValueError('Kale dönüş hızı 30–180 derece/saniye arasında olmalıdır.')
         self.random = random.Random(seed)
         self.duration = duration
+        self.goal_speed_degrees = goal_speed_degrees
         self.teams, self.radii = tuple(teams), tuple(radii)
         self.restart()
 
@@ -29,7 +33,8 @@ class MatchEngine:
         self.events = deque(maxlen=128)
         self.event_serial = 0
         self._contacts = set()
-        self.arena, self.goal = Arena(), Goal()
+        self.arena = Arena()
+        self.goal = Goal(angular_speed=-radians(self.goal_speed_degrees))
         self.scores = dict.fromkeys(self.teams, 0)
         self.goals = []
         self.elapsed = self.accumulator = self.final_elapsed = self.flash = 0.0
