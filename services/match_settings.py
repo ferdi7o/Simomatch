@@ -2,7 +2,8 @@
 from dataclasses import dataclass
 from math import isfinite
 from config import (DISK_RADIUS, MIN_DISK_RADIUS, MAX_DISK_RADIUS, GOAL_SPEED_DEGREES,
-                    MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES)
+                    MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES,
+                    GOAL_SIZE_PERCENT, MIN_GOAL_SIZE_PERCENT, MAX_GOAL_SIZE_PERCENT)
 from services.arena_themes import THEMES, theme_id
 
 
@@ -15,8 +16,11 @@ class MatchSettings:
     theme: str = 'neon_purple'
     background: str = ''
     goal_speed_degrees: float = GOAL_SPEED_DEGREES
+    goal_size_percent: float = GOAL_SIZE_PERCENT
 
     def __post_init__(self):
+        if not isfinite(self.goal_size_percent) or not MIN_GOAL_SIZE_PERCENT <= self.goal_size_percent <= MAX_GOAL_SIZE_PERCENT:
+            raise ValueError('Kale boyutu %60–150 arasında olmalıdır.')
         if self.home['id'] == self.away['id'] or self.home['name'] == self.away['name']:
             raise ValueError('Ev sahibi ve deplasman farklı takımlar olmalıdır.')
         if not isfinite(self.duration) or not 10 <= self.duration <= 600:

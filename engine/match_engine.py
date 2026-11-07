@@ -5,7 +5,7 @@ from collections import deque
 from config import (FIXED_DT, MATCH_SECONDS, COUNTDOWN_SECONDS, FINAL_SECONDS,
                     DISK_RADIUS, MIN_DISK_RADIUS, MAX_DISK_RADIUS, MAX_SPEED,
                     START_SPEED_MIN, START_SPEED_MAX, MIN_SPEED, GOAL_SPEED_DEGREES,
-                    MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES)
+                    MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES, GOAL_SIZE_PERCENT)
 from engine.physics import Disk, collide_disks
 from engine.arena import Arena
 from engine.goal import Goal
@@ -15,7 +15,8 @@ from engine.cards import create_card_schedule
 class MatchEngine:
     def __init__(self, seed=None, duration=MATCH_SECONDS, teams=('FB', 'GS'),
                  radii=(DISK_RADIUS, DISK_RADIUS), goal_speed_degrees=GOAL_SPEED_DEGREES,
-                 cards_enabled=True):
+                 cards_enabled=True, goal_size_percent=GOAL_SIZE_PERCENT):
+        Goal.sized(goal_size_percent)  # Validate before starting any match state.
         if len(teams) != 2 or len(set(teams)) != 2 or not all(teams):
             raise ValueError('İki farklı takım seçilmelidir.')
         if not isfinite(duration) or duration <= 0:
@@ -29,6 +30,7 @@ class MatchEngine:
         self.cards_enabled = cards_enabled
         self.duration = duration
         self.goal_speed_degrees = goal_speed_degrees
+        self.goal_size_percent = goal_size_percent
         self.teams, self.radii = tuple(teams), tuple(radii)
         self.restart()
 
@@ -38,7 +40,7 @@ class MatchEngine:
         self.event_serial = 0
         self._contacts = set()
         self.arena = Arena()
-        self.goal = Goal(angular_speed=-radians(self.goal_speed_degrees))
+        self.goal = Goal.sized(self.goal_size_percent, angular_speed=-radians(self.goal_speed_degrees))
         self.scores = dict.fromkeys(self.teams, 0)
         self.goals = []
         self.cards = []

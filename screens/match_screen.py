@@ -27,7 +27,8 @@ class MatchScreen(FloatLayout):
         self.engine = MatchEngine(duration=settings.duration,
                                   teams=(settings.home['name'], settings.away['name']),
                                   radii=settings.radii,
-                                  goal_speed_degrees=settings.goal_speed_degrees) if settings else MatchEngine()
+                                  goal_speed_degrees=settings.goal_speed_degrees,
+                                  goal_size_percent=settings.goal_size_percent) if settings else MatchEngine()
         teams = (settings.home, settings.away) if settings else ()
         # Decode custom music before scheduling the match clock/countdown.
         self.audio_session = audio.create_session(teams, store) if audio else None
@@ -222,13 +223,13 @@ class MatchScreen(FloatLayout):
             self.electric_effects.draw(g, self.project)
         self.effects.draw(self.project, s)
         p, q = g.posts
-        depth = 100.
+        depth = 100.*(g.size_percent/100)**.5
         outward = (cos(g.angle)*depth, sin(g.angle)*depth)
         back_p = (p[0]+outward[0], p[1]+outward[1])
         back_q = (q[0]+outward[0], q[1]+outward[1])
         self.goal_frame.points = [v for point in (p, back_p, back_q, q) for v in self.project(*point)]
         self.goal_glow.points = self.goal_frame.points
-        self.goal_frame.width = max(1.4, s*4.5)
+        self.goal_frame.width = max(1.4, s*4.5*(g.size_percent/100)**.5)
         self.goal_glow.width = self.goal_frame.width*3
         for i, line in enumerate(self.net):
             if i < 8:

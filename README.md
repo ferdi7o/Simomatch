@@ -36,6 +36,11 @@ Maç kurulumunda iki bağımsız logo/top yarıçapı (18–80 simülasyon birim
 Kale dönüş hızı varsayılan 90°/s, ayar aralığı 30–180°/s'dir. Seçilen derece
 değeri motorda saat yönünde radyan/saniyeye çevrilir ve yeniden başlatmada korunur.
 Direk hızına göre uyarlanan fizik alt adımları yüksek dönüş hızında da çalışır.
+Kale boyutu hız ayarının altındaki %60–150 kaydırıcısıyla seçilir (varsayılan %100).
+Açıklığın kiriş genişliği seçilen yüzdeyle ölçeklenir; %100 önceki genişliği korur.
+Direkler ve gol çizgisi arena yarıçapının %3'ü kadar içeri alınır; arena değişmez.
+Direkler, file, gol algısı ve tema maskeleri aynı geometriyi kullanır. Boyut yeniden
+başlatmada korunur. Dar kale açıklığı, çapı açıklıktan büyük logoları geçirmez.
 Takım boyutu fizik yarıçapını da değiştirir. PNG/JPG logoların en-boy oranı ve
 PNG şeffaflığı korunur; görsel fizik diskiyle aynı çapta dairesel maskeyle çizilir.
 Logo çerçevesi veya logonun arkasında renkli dolgu yoktur. Özel arka plan yalnızca mevcut kurulum

@@ -57,8 +57,10 @@ def test_neon_ring_ends_match_the_physical_posts():
     e = MatchEngine()
     ring.layout(e.goal, lambda x, y: (x, y), 1)
     p, q = e.goal.posts
-    assert ring.segments[0][0].points[:2] == pytest.approx(q)
-    assert ring.segments[-1][0].points[-2:] == pytest.approx(p)
+    # The goal is inset 3%; the arena stays fixed. Endpoints still share rays.
+    ratio = e.goal.radius/e.goal.post_circle_radius
+    assert ring.segments[0][0].points[:2] == pytest.approx([v*ratio for v in q])
+    assert ring.segments[-1][0].points[-2:] == pytest.approx([v*ratio for v in p])
 
 
 def test_respawn_and_restart_clear_trails():

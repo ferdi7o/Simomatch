@@ -1,7 +1,9 @@
 """Rotating goal: a chord between two posts is the scoring line."""
 from dataclasses import dataclass
-from math import cos, sin, tan
-from config import ARENA_RADIUS, GOAL_HALF_ANGLE, GOAL_SPEED, POST_RADIUS
+from math import cos, sin, tan, asin, sqrt, isfinite
+from config import (ARENA_RADIUS, GOAL_HALF_ANGLE, GOAL_SPEED, POST_RADIUS,
+                    GOAL_SIZE_PERCENT, MIN_GOAL_SIZE_PERCENT, MAX_GOAL_SIZE_PERCENT,
+                    GOAL_INSET_RATIO)
 
 
 @dataclass
@@ -11,14 +13,34 @@ class Goal:
     half_angle: float = GOAL_HALF_ANGLE
     radius: float = ARENA_RADIUS
     post_radius: float = POST_RADIUS
+    size_percent: float = GOAL_SIZE_PERCENT
+    inset_ratio: float = 0.
+
+    @classmethod
+    def sized(cls, percent=GOAL_SIZE_PERCENT, **kwargs):
+        """Scale chord width exactly; share inset post geometry with scoring.
+
+        Keep radius as the arena radius for decorative layers. Only the goal
+        posts/line move inward. Angular masks use the new post angles.
+        """
+        if not isfinite(percent) or not MIN_GOAL_SIZE_PERCENT <= percent <= MAX_GOAL_SIZE_PERCENT:
+            raise ValueError('Kale boyutu %60–150 arasında olmalıdır.')
+        scale = percent/100
+        return cls(half_angle=asin(sin(GOAL_HALF_ANGLE)*scale/(1-GOAL_INSET_RATIO)),
+                   post_radius=POST_RADIUS*sqrt(scale), size_percent=percent,
+                   inset_ratio=GOAL_INSET_RATIO, **kwargs)
+
+    @property
+    def post_circle_radius(self):
+        return self.radius*(1-self.inset_ratio)
 
     def update(self, dt):
         self.angle = (self.angle + self.angular_speed * dt) % (2 * 3.141592653589793)
 
     @property
     def posts(self):
-        return [(self.radius * cos(self.angle + offset),
-                 self.radius * sin(self.angle + offset))
+        return [(self.post_circle_radius * cos(self.angle + offset),
+                 self.post_circle_radius * sin(self.angle + offset))
                 for offset in (-self.half_angle, self.half_angle)]
 
     def local(self, disk):
@@ -27,7 +49,7 @@ class Goal:
 
     @property
     def line_distance(self):
-        return self.radius * cos(self.half_angle)
+        return self.post_circle_radius * cos(self.half_angle)
 
     def in_opening(self, disk):
         """Removed wall arc, using precisely the post angles drawn by Canvas.

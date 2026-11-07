@@ -9,7 +9,8 @@ from screens.common import Page, button, caption
 from services.media import load_texture
 from services.match_settings import MatchSettings, THEMES
 from config import (DISK_RADIUS, MIN_DISK_RADIUS, MAX_DISK_RADIUS, GOAL_SPEED_DEGREES,
-                    MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES)
+                    MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES,
+                    GOAL_SIZE_PERCENT, MIN_GOAL_SIZE_PERCENT, MAX_GOAL_SIZE_PERCENT)
 
 
 class SetupScreen(Page):
@@ -53,6 +54,13 @@ class SetupScreen(Page):
         self.goal_speed_slider.bind(value=lambda _, value: setattr(
             self.goal_speed_label, 'text', f'KALE DÖNÜŞ HIZI · {value:.0f}°/s'))
         self.content.add_widget(self.goal_speed_slider)
+        self.goal_size_label = caption(f'KALE BOYUTU · %{GOAL_SIZE_PERCENT:g}', bold=True)
+        self.content.add_widget(self.goal_size_label)
+        self.goal_size_slider = Slider(min=MIN_GOAL_SIZE_PERCENT, max=MAX_GOAL_SIZE_PERCENT,
+                                      value=GOAL_SIZE_PERCENT, step=1, size_hint_y=None, height=dp(42))
+        self.goal_size_slider.bind(value=lambda _, value: setattr(
+            self.goal_size_label, 'text', f'KALE BOYUTU · %{value:.0f}'))
+        self.content.add_widget(self.goal_size_slider)
         self.content.add_widget(caption('ARENA TEMASI', bold=True))
         self.theme = Spinner(text='neon_purple', values=tuple(THEMES), size_hint_y=None, height=dp(42),
                              background_normal='', background_color=(.16, .12, .24, 1))
@@ -118,7 +126,8 @@ class SetupScreen(Page):
             settings = MatchSettings(*teams, radii=tuple(s.value for s in self.sliders),
                                      duration=duration, theme=self.theme.text,
                                      background=self.background_path,
-                                     goal_speed_degrees=self.goal_speed_slider.value)
+                                     goal_speed_degrees=self.goal_speed_slider.value,
+                                     goal_size_percent=self.goal_size_slider.value)
             self.router.start_match(settings)
         except (ValueError, OSError) as exc:
             self.status.text = str(exc) if str(exc) else 'Geçerli bir maç süresi girin.'
