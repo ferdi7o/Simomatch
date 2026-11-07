@@ -14,6 +14,8 @@ from screens.result_panel import ResultPanel
 from screens.arena_layers import ArenaLayers
 from services.audio import play_button_sound
 from screens.announcements import Announcements, CardIndicators
+from screens.fire_particles import FireParticles
+from screens.electric_effects import ElectricEffects
 
 
 class MatchScreen(FloatLayout):
@@ -38,6 +40,8 @@ class MatchScreen(FloatLayout):
                 textures[i] = texture
         self.logo_textures = textures
         self.theme = get_theme(settings.theme if settings else 'neon_purple')
+        self.fire_particles = FireParticles() if settings and settings.theme == 'fire_arena' else None
+        self.electric_effects = ElectricEffects() if settings and settings.theme == 'electric_blue' else None
         background_texture = load_texture(settings.background) if settings and settings.background else None
         if background_texture is None:
             for path in self.theme.image_paths:
@@ -60,6 +64,10 @@ class MatchScreen(FloatLayout):
             self.ring = NeonRing(self.theme.palette, self.theme.glow_strength,
                                  self.theme.decorative_speed_degrees, self.theme.pulse_hz)
             self.arena_layers = ArenaLayers(self.theme.layers)
+            if self.fire_particles:
+                self.canvas.add(self.fire_particles.canvas)
+            if self.electric_effects:
+                self.canvas.add(self.electric_effects.canvas)
             self.effects = MatchEffects(self.theme.effects)
             Color(.8, .94, 1, .58)
             self.net = [Line(width=1) for _ in range(12)]
@@ -125,6 +133,10 @@ class MatchScreen(FloatLayout):
         self._disposed = True
         self.clock_event.cancel()
         self.announcements.reset()
+        if self.fire_particles:
+            self.fire_particles.clear()
+        if self.electric_effects:
+            self.electric_effects.clear()
         if self.audio_session:
             self.audio_session.close()
 
@@ -203,6 +215,11 @@ class MatchScreen(FloatLayout):
         g = e.goal
         self.ring.layout(g, self.project, s)
         self.arena_layers.layout(g, self.project)
+        if self.fire_particles:
+            self.fire_particles.draw(g, self.project)
+        if self.electric_effects:
+            self.electric_effects.apply_brightness(self.arena_layers.layer_colors)
+            self.electric_effects.draw(g, self.project)
         self.effects.draw(self.project, s)
         p, q = g.posts
         depth = 100.
@@ -260,6 +277,14 @@ class MatchScreen(FloatLayout):
         if not finished:
             self.ring.advance(dt)
             self.arena_layers.advance(dt)
+        fire_pending = self.fire_particles and (not finished or not self.fire_particles.idle or
+                                               self.fire_particles.round_id != self.engine.round_id)
+        if fire_pending:
+            self.fire_particles.update(self.engine, dt)
+        electric_pending = self.electric_effects and (not finished or not self.electric_effects.idle or
+                                                     self.electric_effects.round_id != self.engine.round_id)
+        if electric_pending:
+            self.electric_effects.update(self.engine, dt)
         if self.audio_session:
             self.audio_session.update(self.engine)
         self.announcements.sync(self.engine)
@@ -273,9 +298,11 @@ class MatchScreen(FloatLayout):
         key = ((self.engine.round_id, self.announcements.idle, self.engine.can_restart,
                 tuple(self.engine.scores.values()), tuple(self.engine.goals), tuple(self.engine.cards))
                if finished else None)
-        if not finished or effects_pending or key != self._finished_render_key:
+        if not finished or effects_pending or fire_pending or electric_pending or key != self._finished_render_key:
             self.draw_scene()
         self._finished_render_key = key if finished else None
         # Audio fades have their own Clock callbacks and keep running safely.
-        if finished and self.effects.idle and self.announcements.idle and self.engine.can_restart:
+        if (finished and self.effects.idle and self.announcements.idle and self.engine.can_restart
+                and (self.fire_particles is None or self.fire_particles.idle)
+                and (self.electric_effects is None or self.electric_effects.idle)):
             self.clock_event.cancel()

@@ -9,7 +9,7 @@ Tema tanımları `services/arena_themes.py` içindeki `SpriteLayer` verisini kul
 | Tema | İsteğe bağlı dosya | Düzen | Oynatım |
 | --- | --- | --- | --- |
 | Neon Purple | `assets/effects/neon_purple/ring.png` | 1 kare, henüz yok | Canvas neon yedeği |
-| Fire Arena | `assets/arena_effects/fire_arena.png` | 1 kare | 18 saniyede bir tur + hafif parlaklık + kıvılcım |
+| Fire Arena | `assets/arena_effects/fire_arena.png` | 1 kare | 18 saniyede bir tur + 60 dinamik alev + 12 hareketli kıvılcım |
 | Electric Blue | `assets/arena_effects/electric_blue.png` | 1 kare | 12 saniyede bir tur + kısa parlamalar + mavi parçacıklar |
 | Rainbow Neon | `assets/arena_effects/rainbow_neon.png` | 1 kare | 6°/s dekoratif dönüş |
 | Emerald Arena | `assets/effects/emerald_arena/energy.webp` | 8 sütun × 1 satır, henüz yok | Canvas enerji yedeği |
@@ -39,3 +39,10 @@ bir kapatma şekli çizilmez. Direkler, file ve takım diskleri daha sonra çizi
   saniyede yaklaşık 3 kıvılcım veya 0,7 parlama + 2 mavi parçacıktır.
 - WebP çözme desteği kullanılan Kivy görüntü sağlayıcısına bağlıdır; destek
   yoksa dosya atlanır. PNG atlası alternatif olarak tanımlanabilir.
+- Electric Blue PNG dönüşünden bağımsız olarak en fazla 6 prosedürel yıldırım ve
+  24 enerji parçacığı üretir. 5–9 ana parçalı çapraz kollar ve iki yönde ilerleyen
+  15–45 derecelik yaylar kullanılır; ömürleri 0,15–0,4 saniyedir. Çizgiler 2,5 kat
+  kalınlaştırılmış mavi glow, cyan gövde ve beyaz çekirdek katmanlarıyla PNG üstünde
+  çizilir. Tek Mesh ve yeniden kullanılan havuzlar kullanılır.
+  Çekirdek, glow ve parçacık üçgenleri güncel kale açıklığından kırpılır.
+  Yeni bitmap veya sprite dosyası gerekmez; mevcut PNG değiştirilmez.

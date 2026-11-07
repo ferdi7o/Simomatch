@@ -71,6 +71,30 @@ Maç bitince halka dönüşü donar, kısa efektler söner; duyuru kuyruğu bitt
 yeniden başlat düğmesi hazır olduğunda maç ekranının Clock olayı kapatılır.
 Yeniden başlatma olayı tekrar açar; bağımsız gol müziği fade-out saatleri etkilenmez.
 
+Fire Arena ayrıca `screens/fire_particles.py` içinde 60 alev dili ve 12 küçük
+kıvılcımdan oluşan sabit bir havuz kullanır. Aynı parçacık nesneleri tekrar
+kullanılır; her yuvanın ayrı rastgelelik üreteci, doğum zamanı, ömrü, hızı,
+boyutu ve parlaklığı vardır. Mutlak render zamanı konumu, dışa/yukarı sürüklenmeyi,
+bükülmeyi, büyümeyi ve alfa/renk geçişini belirler; bütün alevler aynı anda
+yenilenmez. PNG ana halka olarak korunur. Yeni katman tek vertex-renkli Mesh
+grubudur; ek Widget veya parçacık başına Canvas talimatı oluşturulmaz.
+Kale açıklığına taşan üçgenler, güncel iki kenar yarı düzlemine göre kırpılır.
+Bu maske yalnızca çizimi etkiler; fizik ve motorun rastgelelik üreteci değişmez.
+Maç sonunda yeni alev doğmaz, kalanlar en fazla 1,15 saniyede söner. Diğer
+temalara bu yeni katman eklenmez. `python -m pytest tests/test_fire_particles.py -q`
+ömrü, nesne tekrar kullanımını, 30/60/120 FPS eşitliğini ve GPU açıklık maskesini sınar.
+
+Electric Blue ayrıca `screens/electric_effects.py` içinde 6 yıldırım ve 24 enerji
+parçacığı için yeniden kullanılan havuzlar kullanır. 0,15–0,4 saniyelik yıldırımlar
+5–9 ana parçadan ve isteğe bağlı kısa yan dallardan oluşur. Çapraz kollar yarıçapın
+%8–18'i kadar dışa uzanır; 15–45 derecelik dalgalar iki yönde çember boyunca ilerler.
+Önceki kalınlığın 2,5 katındaki çizgiler mavi dış glow, cyan gövde ve beyaz çekirdek
+olarak PNG'nin üstünde, kale ve logoların altında tek vertex-renkli Mesh ile çizilir.
+Fire'ın kırpma yardımcıları güncel kale açıklığını glow dahil tamamen boş bırakır.
+PNG dönüşü korunur; kısa parlaklık artışı yalnızca elektrik katmanını etkiler.
+Maç sonunda üretim durur ve kalan efektler söner; tema ekranı kapanınca Mesh temizlenir.
+`python -m pytest tests/test_electric_effects.py -q` bu davranışları sınar.
+
 Windows penceresi 450×800 açılır. Simülasyon koordinatlarında merkez (0, 0),
 yukarı yön +Y ve arena yarıçapı 400 birimdir. Ekran boyutu yalnızca çizim ölçeğini
 değiştirir. Arena çapı portre ekran genişliğinin yaklaşık %74'üdür. Clock render
