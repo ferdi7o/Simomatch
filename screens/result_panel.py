@@ -3,7 +3,31 @@ from kivy.graphics import Color, RoundedRectangle, Line
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.boxlayout import BoxLayout
 from screens.match_visuals import LogoDrawing
+
+
+class CardRow(FloatLayout):
+    """A real Canvas card icon, with ordinary text independent of emoji fonts."""
+    def __init__(self, kind, minute, **kwargs):
+        super().__init__(size_hint=(1, None), height=26, **kwargs)
+        self.kind, self.minute = kind, minute
+        with self.canvas.before:
+            self.icon_color = Color(*((1, .81, .15, 1) if kind == 'yellow_card' else (1, .2, .2, 1)))
+            self.icon = RoundedRectangle(radius=[2])
+        self.text = Label(text=f"{minute}' {'SARI' if kind == 'yellow_card' else 'KIRMIZI'}",
+                          size_hint=(None, None), halign='left', valign='middle')
+        self.add_widget(self.text)
+        self.bind(pos=self.layout_row, size=self.layout_row)
+        self.layout_row()
+
+    def layout_row(self, *args):
+        width, height = self.height*.32, self.height*.52
+        self.icon.pos = (self.x+self.width*.06, self.center_y-height/2)
+        self.icon.size = (width, height)
+        self.text.pos = (self.icon.pos[0]+width+5, self.y)
+        self.text.size = (max(1, self.right-self.text.x-2), self.height)
+        self.text.text_size = self.text.size
 
 
 class ResultPanel(FloatLayout):
@@ -11,6 +35,7 @@ class ResultPanel(FloatLayout):
         super().__init__(size_hint=(None, None), **kwargs)
         self.teams = tuple(teams)
         self.minutes = {name: [] for name in teams}
+        self.card_minutes = {name: {'yellow_card': [], 'red_card': []} for name in teams}
         with self.canvas.before:
             Color(.012, .019, .032, .98)
             self.background = RoundedRectangle(radius=[16])
@@ -26,12 +51,15 @@ class ResultPanel(FloatLayout):
                       for text in ('EV SAHİBİ', 'DEPLASMAN')]
         self.name_scrolls, self.names = [], []
         self.goal_scrolls, self.goal_labels, self.counts = [], [], []
+        self.goal_contents, self.card_rows = [], [[], []]
         for name in teams:
             name_scroll, name_label = self.scroll_label(name, bold=True)
             self.name_scrolls.append(name_scroll)
             self.names.append(name_label)
             self.counts.append(self.label('GOL DAKİKALARI', color=(.6, .78, .9, 1)))
-            scroll, label = self.scroll_label('Gol atılmadı', valign='top')
+            scroll, label = self.scroll_label('Gol atılmadı', valign='top', stack=True)
+            content = scroll.children[0]
+            self.goal_contents.append(content)
             self.goal_scrolls.append(scroll)
             self.goal_labels.append(label)
         self.bind(pos=self.layout_panel, size=self.layout_panel)
@@ -44,7 +72,7 @@ class ResultPanel(FloatLayout):
         self.add_widget(label)
         return label
 
-    def scroll_label(self, text, **kwargs):
+    def scroll_label(self, text, stack=False, **kwargs):
         scroll = ScrollView(size_hint=(None, None), do_scroll_x=False, bar_width=3,
                             scroll_type=['bars', 'content'])
         label = Label(text=text, size_hint=(1, None), halign='center', padding=(0, 6), **kwargs)
@@ -55,20 +83,39 @@ class ResultPanel(FloatLayout):
             label.height = max(1, label.texture_size[1])
         label.bind(texture_size=fit)
         scroll.bind(height=fit)
-        scroll.add_widget(label)
+        if stack:
+            content = BoxLayout(orientation='vertical', size_hint=(1, None))
+            content.bind(minimum_height=content.setter('height'))
+            content.add_widget(label)
+            scroll.add_widget(content)
+        else:
+            scroll.add_widget(label)
         self.add_widget(scroll)
         return scroll, label
 
     def set_visible(self, visible):
         self.opacity, self.disabled = (1, False) if visible else (0, True)
 
-    def set_result(self, scores, goals):
+    def set_result(self, scores, goals, cards=()):
         self.score.text = f'{scores[self.teams[0]]} - {scores[self.teams[1]]}'
-        for name, label, count, scroll in zip(self.teams, self.goal_labels, self.counts, self.goal_scrolls):
+        for i, (name, label, count, scroll) in enumerate(zip(self.teams, self.goal_labels, self.counts, self.goal_scrolls)):
             minutes = sorted(minute for team, minute in goals if team == name)
             self.minutes[name] = minutes
             label.text = '\n'.join(f'{minute}\u2032' for minute in minutes) if minutes else 'Gol atılmadı'
             count.text = f'{len(minutes)} GOL · DAKİKALAR' if minutes else 'GOL DAKİKALARI'
+            for row in self.card_rows[i]:
+                self.goal_contents[i].remove_widget(row)
+            self.card_rows[i].clear()
+            for kind in ('yellow_card', 'red_card'):
+                card_minutes = sorted(card.minute for card in cards if card.team == name and card.kind == kind)
+                self.card_minutes[name][kind] = card_minutes
+                for minute in card_minutes:
+                    row = CardRow(kind, minute)
+                    self.card_rows[i].append(row)
+                    self.goal_contents[i].add_widget(row)
+            card_count = sum(len(v) for v in self.card_minutes[name].values())
+            if card_count:
+                count.text = f'{len(minutes)} GOL · {card_count} KART'
             scroll.scroll_y = 1
         for scroll in self.name_scrolls:
             scroll.scroll_y = 1
@@ -98,3 +145,6 @@ class ResultPanel(FloatLayout):
             scroll = self.goal_scrolls[i]
             scroll.pos, scroll.size = (cx-w*.21, self.y+h*.055), (w*.42, h*.435)
             self.goal_labels[i].font_size = max(14, min(w*.047, h*.047))
+            for row in self.card_rows[i]:
+                row.text.font_size = self.goal_labels[i].font_size
+                row.height = max(24, row.text.font_size*1.6)

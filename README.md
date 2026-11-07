@@ -57,8 +57,19 @@ görsel tema arka planını geçersiz kılar; çember ve efekt paleti seçili te
 motoruna veya gol açıklığının geometrisine aktarılmaz.
 Dekoratif renk akışı ve glow darbeleri ayrı render saatinden ilerler; kale
 hızı bunları hızlandırmaz. İsteğe bağlı PNG/WebP atlas katmanları için
-[efekt dosyası sözleşmesine](assets/effects/README.md) bakın. Henüz alev, yıldırım
-ve enerji atlasları yoktur; mevcut çizimler yalnızca stilize neon/parçacık efektidir.
+[efekt dosyası sözleşmesine](assets/effects/README.md) bakın. Fire Arena, Electric
+Blue ve Rainbow Neon artık `assets/arena_effects/` altındaki kendi RGBA PNG
+görsellerini kullanır. Şeffaf kenarlar kaynak-piksel kalibrasyonuyla hesaba katılır;
+parlak halka fiziksel çembere oturur. Kale açıklığı Mesh'in boş açısal dilimiyle
+oluşturulur, arka plan kapatılmaz. Tek PNG gerçek kare kare animasyon sağlamaz;
+yalnızca hafif parlaklık değişimi, dönüş ve sınırlı parçacıklar uygulanır.
+Fire Arena'nın halka dönüşü 18 saniye/tur, Electric Blue'nun dönüşü 12 saniye/tur
+olarak ayarlanmıştır. Rainbow Neon'un mevcut 6°/s dönüşü korunur. Konumu rastgele
+seçilen yerel elektrik parlamaları 0,16 saniye yaşar; az sayıda mavi parçacıkla
+desteklenir. Tüm görsel zamanlar Kivy Clock'un render süresinden ilerler.
+Maç bitince halka dönüşü donar, kısa efektler söner; duyuru kuyruğu bittiğinde ve
+yeniden başlat düğmesi hazır olduğunda maç ekranının Clock olayı kapatılır.
+Yeniden başlatma olayı tekrar açar; bağımsız gol müziği fade-out saatleri etkilenmez.
 
 Windows penceresi 450×800 açılır. Simülasyon koordinatlarında merkez (0, 0),
 yukarı yön +Y ve arena yarıçapı 400 birimdir. Ekran boyutu yalnızca çizim ölçeğini
@@ -87,7 +98,9 @@ havuzundan bir yuvayı kullanır; diğer takımın kanallarını kesmez.
 
 Varsayılan efekt seviyesi %32, özel müzik seviyesi %28'dir. `set_effects_volume()`
 gelecekteki genel ses ayarına bağlanabilir. Sarı/kırmızı kart sesleri hazır olay
-eşlemelerine sahiptir (`yellow_card`/`red_card`); otomatik kart kuralları eklenmemiştir.
+eşlemelerine sahiptir (`yellow_card`/`red_card`). Kart sesleri, sıradaki kart
+animasyonu görünür olduğunda çalınır. SDL2 kullanılırsa eşzamanlı efekt ve takım
+müzikleri için en az 32 mixer kanalı ayrılır; ses havuzları yine sınırlıdır.
 Maçtan ayrılma ve yeniden başlatma müzikleri/zamanlayıcıları temizler. Uygulama
 arka plana alınırken sesler durur; dönüşte durmuş takım müzikleri otomatik başlamaz.
 
@@ -100,6 +113,18 @@ yalnızca gol atan disk merkezde yeniden doğar. Merkez rakip tarafından
 kaplanmışsa, rakibin konum/hızını değiştirmeden en yakın güvenli noktaya taşınır.
 Diğer disk normal fizik akışına devam eder. Bu aynı zamanda mükerrer golü engeller.
 
+Her maçta ayrı bir rastgelelik üreteciyle 0–5 sarı kart ve %8 olasılıkla en fazla
+bir kırmızı kart planlanır. Takımlar rastgele seçilir; dakikalar maç boyunca
+aralıklı slotlara dağıtılır. `engine/cards.py` yalnızca görsel/istatistik olayları
+üretir. Kartlar disklerin hızını, yönünü, kütlesini veya çarpışmalarını değiştirmez.
+Kart geçmişi maç boyunca bellekte tutulur; yeniden başlatmada temizlenir.
+
+GOOL duyurusu çember ve skor alanı arasındadır; büyüme, altın renkli parlama ve
+yumuşak kaybolmayla 1,8 saniye sürer. Kart duyurusu arena altında takım adı ve
+kart rengiyle 1,5 saniye görünür. Yakın gol/kart duyuruları sıraya alınır; saat
+ve fizik çalışmaya devam eder. Maç bitince kuyruk tamamlanır ve sonuç paneli
+gösterilir. Başlıktaki küçük kart sayaçları takım logolarının dış yanında yer alır.
+
 3 saniyelik geri sayımın ardından 55 saniye maç oynanır. Futbol dakikası 1–90
 arasında ilerler. Final paneli görünür kalır ve 3 saniye sonra yeniden başlatma
 düğmesi etkinleşir. Gol geçmişi yalnızca bellekte tutulur.
@@ -108,17 +133,25 @@ tam takım adı, ortak büyük final skorunun altında yalnızca o takımın kro
 gol dakikaları bulunur. Uzun isimler ve gol listeleri ayrı ayrı kaydırılabilir;
 gol atamayan sütunda “Gol atılmadı” gösterilir. Liste her render karesinde yeniden
 kurulmaz; sonuç değişmedikçe kullanıcının kaydırma konumu korunur.
+Kart dakikaları aynı takım sütununda sarı/kırmızı küçük simgelerle gösterilir.
+Kartı olmayan takım için boş kart bölümü ayrılmaz.
+Sonuç kartları font/emoji karakterleri yerine Canvas `RoundedRectangle` kullanır;
+yanlarında `24' SARI` ve `77' KIRMIZI` gibi normal metin bulunur. Kart satırları
+gol listesiyle aynı kaydırılabilir içerikte tutulur.
 
 Görsel smoke kontrolü: `python tools/smoke_ui.py`. Kullanıcı takımlarını
 değiştirmeden `.smoke_runtime/` altında örnek takım ve ekran görüntüleri üretir;
 menü, takım ekranı, kurulum, maç, final, yeniden başlatma ve geri dönüşü çalıştırır.
+`python tools/smoke_events.py` ise kullanıcı kayıtlarına dokunmadan GOOL, kart
+kuyruğu, kart sayaçları ve sonuç panelini 320×640, 450×800, 720×1280 boyutlarında
+görüntüler; çıktıları `.smoke_runtime/events_*.png` dosyalarına kaydeder.
 
 Gerçek ses kontrolü: `python tools/smoke_audio.py`. Düşük ses seviyesinde 11
 dosyanın yüklenmesini, bağımsız müzik durdurmayı ve 5 saniye sınırını sınar. Windows'ta
 en az dört gerçek SDL2 mixer kanalının aynı anda çalıştığını kontrol eder. Bu test
 fiziksel hoparlör çıkışının veya ses kalitesinin dinleme testi değildir.
 
-APK, video kaydı ve otomatik kart sistemi bu aşamanın kapsamı dışındadır.
+APK ve video kaydı bu aşamanın kapsamı dışındadır.
 Android dosya seçicisi, depolama yaşam döngüsü, geri tuşu ve portre kilidi gerçek
 cihazda test edilmemiştir. Android paketleme henüz yapılmamıştır.
 Android WAV/MP3 çözücüleri, eşzamanlı kanallar ve duraklatma/dönüş yaşam döngüsü

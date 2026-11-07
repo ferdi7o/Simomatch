@@ -10,6 +10,9 @@ class EffectStyle:
     spark_color: tuple = (1, .85, .45)
     flash_color: tuple = (.65, .9, 1)
     spark_count: int = 6
+    ambient_rate: float = 0.
+    ambient_flash: bool = False
+    ambient_particle_rate: float = 0.
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,10 @@ class SpriteLayer:
     outer_scale: float = 1.14
     opacity: float = .85
     rotation_degrees: float = 0.
+    source_radius_pixels: float = 0.
+    source_center_pixels: tuple = ()  # Source image pixels, origin at top-left.
+    pulse_depth: float = 0.
+    pulse_hz: float = 1.
 
 
 @dataclass(frozen=True)
@@ -65,26 +72,33 @@ THEMES = {
         (.025, .008, .004, 1), 'assets/backgrounds/fire_arena.png',
         ((1, .15, .04), (1, .42, .06), (1, .82, .18), (1, .95, .65)),
         (.7, .16, .025), 1.15,
-        EffectStyle(((1, .4, .08), (1, .8, .2)), .16, (1, .7, .18), (1, .45, .15), 8),
+        EffectStyle(((1, .4, .08), (1, .8, .2)), .16, (1, .7, .18), (1, .45, .15), 8, ambient_rate=3.),
         decorative_speed_degrees=16., pulse_hz=2.3,
-        layers=(SpriteLayer('assets/effects/fire_arena/flames.webp', columns=8, frames=8, fps=20),)),
+        layers=(SpriteLayer('assets/arena_effects/fire_arena.png', inner_scale=.72, outer_scale=1.30,
+                            opacity=.90, rotation_degrees=20, source_radius_pixels=445.25, source_center_pixels=(613.58, 627.79),
+                            pulse_depth=.08, pulse_hz=1.2),)),
     'electric_blue': ArenaTheme(
         (.004, .012, .025, 1), 'assets/backgrounds/electric_blue.png',
         ((.06, .4, 1), (.08, .8, 1), (.5, .95, 1), (.9, .98, 1)),
         (.04, .35, .65), 1.1,
-        EffectStyle(((.1, .7, 1), (.55, .9, 1)), .20, (.6, .9, 1), (.3, .85, 1)),
+        EffectStyle(((.1, .7, 1), (.55, .9, 1)), .20, (.6, .9, 1), (.3, .85, 1),
+                    ambient_rate=.7, ambient_flash=True, ambient_particle_rate=2.),
         decorative_speed_degrees=-28., pulse_hz=3.5,
-        layers=(SpriteLayer('assets/effects/electric_blue/lightning.webp', columns=8, frames=8, fps=18),)),
+        layers=(SpriteLayer('assets/arena_effects/electric_blue.png', inner_scale=.68, outer_scale=1.25,
+                            opacity=.90, rotation_degrees=-30, source_radius_pixels=479.31, source_center_pixels=(619.52, 639.60),
+                            pulse_depth=.03, pulse_hz=.7),)),
     'rainbow_neon': ArenaTheme(
         (.006, .014, .012, 1), 'assets/backgrounds/rainbow_neon.png',
         ((.12, 1, .55), (1, .86, .18), (1, .38, .10), (.12, .6, 1), (.9, .98, 1)),
         (.04, .5, .28), decorative_speed_degrees=35.,
-        layers=(SpriteLayer('assets/effects/rainbow_neon/ring.png', rotation_degrees=12),)),
+        layers=(SpriteLayer('assets/arena_effects/rainbow_neon.png', inner_scale=.72, outer_scale=1.22,
+                            opacity=.88, rotation_degrees=6, source_radius_pixels=494.68,
+                            source_center_pixels=(615.16, 632.47), pulse_depth=.04, pulse_hz=.5),)),
     'emerald_arena': ArenaTheme(
         (.004, .02, .012, 1), 'assets/backgrounds/emerald_arena.png',
         ((.06, .8, .3), (.18, 1, .55), (.55, 1, .8), (.9, 1, .95)),
         (.03, .5, .2), .9,
-        EffectStyle(((.15, 1, .5), (.6, 1, .85)), .18, (.65, 1, .6), (.4, 1, .75)),
+        EffectStyle(((.15, 1, .5), (.6, 1, .85)), .18, (.65, 1, .6), (.4, 1, .75), ambient_rate=2.),
         decorative_speed_degrees=12., pulse_hz=.6,
         layers=(SpriteLayer('assets/effects/emerald_arena/energy.webp', columns=8, frames=8, fps=16),)),
 }

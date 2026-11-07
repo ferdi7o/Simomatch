@@ -243,6 +243,17 @@ def test_match_events_consumed_once_and_lifecycle_stops_audio(audio):
     assert all(not v.busy for name, pool in m.pools.items() if name != 'button' for v in pool)
 
 
+def test_card_audio_can_be_deferred_until_queued_animation(audio):
+    session = audio.manager.create_session()
+    session.defer_cards = True
+    e = MatchEngine(seed=1)
+    session.update(e)
+    e.emit('yellow_card', 0, 0, 'FB')
+    session.update(e)
+    assert all(not v.busy for v in audio.manager.pools['yellow_card'])
+    assert audio.manager.play('yellow_card')
+
+
 def test_same_physical_disk_contact_emits_one_event():
     e = MatchEngine(seed=8)
     e.state = 'playing'

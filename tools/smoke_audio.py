@@ -47,6 +47,9 @@ def run():
             mixer = ctypes.CDLL('SDL2_mixer.dll')
             mixer.Mix_Playing.argtypes = [ctypes.c_int]
             mixer.Mix_Playing.restype = ctypes.c_int
+            mixer.Mix_AllocateChannels.argtypes = [ctypes.c_int]
+            mixer.Mix_AllocateChannels.restype = ctypes.c_int
+            assert mixer.Mix_AllocateChannels(-1) >= 32
             assert mixer.Mix_Playing(-1) >= 4
             print('SDL MIXER: at least 4 native mixer channels active simultaneously')
         manager.play('wall')

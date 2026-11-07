@@ -13,6 +13,9 @@ class MatchEffects:
         self.time = 0.
         self.last_event = 0
         self.round_id = None
+        self.ambient_accumulator = 0.
+        self.blue_accumulator = 0.
+        self.ambient_threshold = self.blue_threshold = 1.
         self.trails = [deque(maxlen=16), deque(maxlen=16)]
         self.trail_drawings = []
         for rgb in self.style.trail_colors:
@@ -40,6 +43,28 @@ class MatchEffects:
                 trail.clear()
             self.particles.clear()
             self.flashes.clear()
+            self.ambient_accumulator = 0.
+            self.blue_accumulator = 0.
+            self.ambient_threshold = self.random.uniform(.75, 1.25)
+            self.blue_threshold = self.random.uniform(.75, 1.25)
+        if engine.state == 'playing':
+            self.ambient_accumulator += min(max(dt, 0), .1)*min(10, self.style.ambient_rate)
+            while self.ambient_accumulator >= self.ambient_threshold:
+                self.ambient_accumulator -= self.ambient_threshold
+                self.ambient_threshold = self.random.uniform(.75, 1.25)
+                angle = engine.goal.angle+engine.goal.half_angle+self.random.uniform(0, 2*pi-2*engine.goal.half_angle)
+                x, y = engine.arena.radius*cos(angle), engine.arena.radius*sin(angle)
+                if self.style.ambient_flash:
+                    self.flashes.append((self.time, x, y))
+                else:
+                    self.particles.append((self.time, x, y, cos(angle)*60, sin(angle)*60))
+            self.blue_accumulator += min(max(dt, 0), .1)*min(10, self.style.ambient_particle_rate)
+            while self.blue_accumulator >= self.blue_threshold:
+                self.blue_accumulator -= self.blue_threshold
+                self.blue_threshold = self.random.uniform(.75, 1.25)
+                angle = engine.goal.angle+engine.goal.half_angle+self.random.uniform(0, 2*pi-2*engine.goal.half_angle)
+                x, y = engine.arena.radius*cos(angle), engine.arena.radius*sin(angle)
+                self.particles.append((self.time, x, y, cos(angle)*30, sin(angle)*30))
         for serial, kind, x, y, team in engine.events:
             if serial <= self.last_event:
                 continue
@@ -62,6 +87,10 @@ class MatchEffects:
                 if trail and hypot(disk.x-trail[-1][1], disk.y-trail[-1][2]) > 160:
                     trail.clear()
                 trail.append((self.time, disk.x, disk.y))
+
+    @property
+    def idle(self):
+        return not self.particles and not self.flashes and not any(self.trails)
 
     def draw(self, project, scale):
         for trail, pool in zip(self.trails, self.trail_drawings):

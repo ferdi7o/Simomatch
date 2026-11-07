@@ -119,6 +119,24 @@ class AudioManager:
         self.sessions = []
         for name, filename in SOUND_FILES.items():
             self.pools[name] = self._load_pool(self.root / filename, 3 if name in COLLISION_SOUNDS else 2)
+        self._configure_mixer_channels()
+
+    def _configure_mixer_channels(self):
+        # SDL_mixer can default to only 8 channels. Reserve capacity for the
+        # existing bounded voice pools, including cards + concurrent goals.
+        if not any(type(v.sound).__module__.endswith('audio_sdl2') for pool in self.pools.values() for v in pool):
+            return
+        import ctypes
+        for library in ('SDL2_mixer.dll', 'libSDL2_mixer.so', 'libSDL2_mixer.dylib'):
+            try:
+                mixer = ctypes.CDLL(library)
+                mixer.Mix_AllocateChannels.argtypes = [ctypes.c_int]
+                mixer.Mix_AllocateChannels.restype = ctypes.c_int
+                if mixer.Mix_AllocateChannels(-1) < 32:
+                    mixer.Mix_AllocateChannels(32)
+                return
+            except (OSError, AttributeError):
+                continue
 
     def _load_pool(self, path, count):
         if not path or not Path(path).is_file():
@@ -192,6 +210,7 @@ class MatchAudio:
         self.music = {}
         self.round_id, self.last_event = None, 0
         self.closed = False
+        self.defer_cards = False
         for team in teams:
             path = store.asset_path(team.get('music', '')) if store else None
             self.music[team['name']] = manager._load_pool(path, 2) if path else []
@@ -231,7 +250,10 @@ class MatchAudio:
             elif kind in ('start', 'end'):
                 self.manager.stop_effect('countdown')
                 self.manager.play(kind)
-            elif kind in COLLISION_SOUNDS or kind in ('yellow_card', 'red_card'):
+            elif kind in ('yellow_card', 'red_card'):
+                if not self.defer_cards:
+                    self.manager.play(kind)
+            elif kind in COLLISION_SOUNDS:
                 self.manager.play(kind)
 
     def close(self):

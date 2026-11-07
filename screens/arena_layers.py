@@ -19,6 +19,7 @@ class ArenaLayers:
     def __init__(self, definitions=(), loader=load_texture, root=None):
         self.time = 0.
         self.loaded, self.missing_assets, self.diagnostics = [], [], {}
+        self.layer_colors = []
         root = Path(root or Path(__file__).resolve().parents[1])
         self.indices = [j for i in range(self.SEGMENTS)
                         for j in (2*i, 2*i+1, 2*i+2, 2*i+1, 2*i+3, 2*i+2)]
@@ -39,12 +40,18 @@ class ArenaLayers:
                 if texture.width % definition.columns or texture.height % definition.rows:
                     raise ValueError('Atlas ölçüleri satır/sütun sayısına bölünmelidir.')
                 width, height = texture.width//definition.columns, texture.height//definition.rows
+                if definition.source_radius_pixels < 0 or (definition.source_center_pixels and
+                        (len(definition.source_center_pixels) != 2 or
+                         not 0 <= definition.source_center_pixels[0] < width or
+                         not 0 <= definition.source_center_pixels[1] < height)):
+                    raise ValueError('Geçersiz kaynak halka kalibrasyonu.')
                 frames = tuple(texture.get_region((i % definition.columns)*width,
                                (definition.rows-1-i//definition.columns)*height, width, height)
                                for i in range(definition.frames))
-                Color(1, 1, 1, max(0, min(1, definition.opacity)))
+                color = Color(1, 1, 1, max(0, min(1, definition.opacity)))
                 mesh = Mesh(vertices=[], indices=self.indices, texture=frames[0], mode='triangles')
                 self.loaded.append((definition, mesh, frames))
+                self.layer_colors.append(color)
             except Exception as exc:
                 self.missing_assets.append(str(path))
                 self.diagnostics[str(path)] = str(exc)
@@ -56,17 +63,24 @@ class ArenaLayers:
         """Read geometry only; omit the exact physical opening from every mesh."""
         start = goal.angle+goal.half_angle
         length = 2*pi-2*goal.half_angle
-        for definition, mesh, frames in self.loaded:
+        for (definition, mesh, frames), color in zip(self.loaded, self.layer_colors):
             mesh.texture = frames[int(self.time*definition.fps) % len(frames)]
             uv = mesh.texture.tex_coords
             phase = radians(definition.rotation_degrees)*self.time
+            pulse = max(0., min(1., definition.pulse_depth))
+            color.a = max(0., min(1., definition.opacity))*(1-pulse*.5+pulse*.5*sin(self.time*2*pi*definition.pulse_hz))
+            width, height = mesh.texture.size
+            source_radius = definition.source_radius_pixels or min(width, height)*.5/definition.outer_scale
+            center_x, center_y = definition.source_center_pixels or (width/2, height/2)
             vertices = []
             for i in range(self.SEGMENTS+1):
                 angle = start+length*i/self.SEGMENTS
                 for scale in (definition.inner_scale, definition.outer_scale):
                     x, y = project(goal.radius*scale*cos(angle), goal.radius*scale*sin(angle))
-                    u = .5+.5*scale/definition.outer_scale*cos(angle-phase)
-                    v = .5+.5*scale/definition.outer_scale*sin(angle-phase)
+                    # Uniform source-pixel scale: transparent margins and a
+                    # non-square texture must never stretch the physical ring.
+                    u = (center_x+source_radius*scale*cos(angle-phase))/width
+                    v = 1-(center_y-source_radius*scale*sin(angle-phase))/height
                     # Atlas regions may have flipped UV coordinates.
                     tu = (1-v)*((1-u)*uv[0]+u*uv[2])+v*((1-u)*uv[6]+u*uv[4])
                     tv = (1-v)*((1-u)*uv[1]+u*uv[3])+v*((1-u)*uv[7]+u*uv[5])

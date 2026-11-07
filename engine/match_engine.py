@@ -9,11 +9,13 @@ from config import (FIXED_DT, MATCH_SECONDS, COUNTDOWN_SECONDS, FINAL_SECONDS,
 from engine.physics import Disk, collide_disks
 from engine.arena import Arena
 from engine.goal import Goal
+from engine.cards import create_card_schedule
 
 
 class MatchEngine:
     def __init__(self, seed=None, duration=MATCH_SECONDS, teams=('FB', 'GS'),
-                 radii=(DISK_RADIUS, DISK_RADIUS), goal_speed_degrees=GOAL_SPEED_DEGREES):
+                 radii=(DISK_RADIUS, DISK_RADIUS), goal_speed_degrees=GOAL_SPEED_DEGREES,
+                 cards_enabled=True):
         if len(teams) != 2 or len(set(teams)) != 2 or not all(teams):
             raise ValueError('İki farklı takım seçilmelidir.')
         if not isfinite(duration) or duration <= 0:
@@ -23,6 +25,8 @@ class MatchEngine:
         if not isfinite(goal_speed_degrees) or not MIN_GOAL_SPEED_DEGREES <= goal_speed_degrees <= MAX_GOAL_SPEED_DEGREES:
             raise ValueError('Kale dönüş hızı 30–180 derece/saniye arasında olmalıdır.')
         self.random = random.Random(seed)
+        self.card_random = random.Random(f'cards:{seed}' if seed is not None else None)
+        self.cards_enabled = cards_enabled
         self.duration = duration
         self.goal_speed_degrees = goal_speed_degrees
         self.teams, self.radii = tuple(teams), tuple(radii)
@@ -37,6 +41,9 @@ class MatchEngine:
         self.goal = Goal(angular_speed=-radians(self.goal_speed_degrees))
         self.scores = dict.fromkeys(self.teams, 0)
         self.goals = []
+        self.cards = []
+        self.card_schedule = create_card_schedule(self.card_random, self.teams) if self.cards_enabled else []
+        self._next_card = 0
         self.elapsed = self.accumulator = self.final_elapsed = self.flash = 0.0
         self.countdown = COUNTDOWN_SECONDS
         self.state = 'countdown'
@@ -109,6 +116,11 @@ class MatchEngine:
             self._integrate(dt/substeps)
         for disk in self._scored_this_tick:
             self.respawn(disk)
+        while self._next_card < len(self.card_schedule) and self.card_schedule[self._next_card].minute <= self.minute:
+            card = self.card_schedule[self._next_card]
+            self.cards.append(card)
+            self.emit(card.kind, 0, 0, card.team)
+            self._next_card += 1
         if self.elapsed >= self.duration - 1e-9:
             self.elapsed = self.duration
             self.state = 'finished'
