@@ -10,7 +10,7 @@ from uuid import uuid4
 import json
 import shutil
 import hashlib
-import imghdr
+from services.image_format import image_format
 from services.media import load_texture
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +30,35 @@ LEGACY_BACKGROUNDS = {
     'stadium_rain': Background('Rainy Stadium', 'assets/background/stadium_rain.png'),
     'retro_pitch': Background('Classic Football', 'assets/background/retro_pitch.png'),
     'cosmic_stadium': Background('Cosmic Arena', 'assets/background/cosmic_stadium.png'),
-    "gs_stad": Background("GS Stad ", "assets/background/gs_stad.png",)
+    "gs_stad": Background("GS Stad ", "assets/background/gs_stad.png"),
+    'besiktas_stad': Background(
+        'Beşiktaş Stadı',
+        'assets/background/besiktas_stad.png'
+    ),
+    'fenerbahce_stad': Background(
+        'Fenerbahçe Stadı',
+        'assets/background/fenerbahce_stad.png'
+    ),
+    'trabzonspor_stad': Background(
+        'Trabzonspor Stadı',
+        'assets/background/trabzonspor_stad.png'
+    ),
+    'corum_fk_stad': Background(
+        'Çorum FK Stadı',
+        'assets/background/corum_fk_stad.png'
+    ),
+    'kasimpasa_stad': Background(
+        'Kasımpaşa Stadı',
+        'assets/background/kasimpasa_stad.png'
+    ),
+    'goztepe_stad': Background(
+        'Göztepe Stadı',
+        'assets/background/goztepe_stad.png'
+    ),
+    'konyaspor_stad': Background(
+        'Konyaspor Stadı',
+        'assets/background/konyaspor_stad.png'
+    ),
 }
 BACKGROUNDS = dict(LEGACY_BACKGROUNDS)
 
@@ -56,7 +84,7 @@ def discover_backgrounds(root=ROOT, validator=load_texture):
             if (not path.is_file() or not resolved.is_relative_to(directory.resolve())
                     or path.suffix.lower() not in ('.png', '.jpg', '.jpeg') or resolved in seen):
                 continue
-            if path.stat().st_size > 32*1024*1024 or imghdr.what(path) not in ('png', 'jpeg') or validator(path) is None:
+            if path.stat().st_size > 32*1024*1024 or image_format(path) not in ('png', 'jpeg') or validator(path) is None:
                 continue
             relative = path.relative_to(root).as_posix()
             known = known_names.get(path.name.casefold())
@@ -233,7 +261,8 @@ class BackgroundPreferences:
         source = Path(source)
         if not self.root:
             raise ValueError('Kalıcı uygulama veri dizini bulunamadı.')
-        if source.suffix.lower() not in ('.png', '.jpg', '.jpeg') or load_texture(source) is None:
+        if (source.suffix.lower() not in ('.png', '.jpg', '.jpeg')
+                or image_format(source) not in ('png', 'jpeg') or load_texture(source) is None):
             raise ValueError('Arka plan okunamadı. PNG/JPG görsel seçin.')
         directory = self.root/'backgrounds'
         directory.mkdir(parents=True, exist_ok=True)

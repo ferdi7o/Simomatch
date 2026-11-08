@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4, UUID
 import hashlib
-import imghdr
+from services.image_format import image_format
 import json
 import shutil
 from services.media import load_texture
@@ -94,7 +94,7 @@ class CustomBackgroundStore:
         source = Path(source)
         try:
             valid = (source.suffix.lower() in ('.png', '.jpg', '.jpeg') and
-                     source.stat().st_size <= 32*1024*1024 and imghdr.what(source) in ('png', 'jpeg'))
+                     source.stat().st_size <= 32*1024*1024 and image_format(source) in ('png', 'jpeg'))
         except (OSError, ValueError):
             valid = False
         if not valid or self.loader(source) is None:

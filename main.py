@@ -20,9 +20,15 @@ from services.team_store import TeamStore
 from services.file_picker import create_file_picker
 from services.audio import AudioManager
 from services.backgrounds import refresh_background_catalog
+from services.android_display import ImmersiveDisplay
 
 
 class SimomatchApp(App):
+    def on_start(self):
+        from kivy.clock import Clock
+        self.immersive = ImmersiveDisplay(platform, Window, Clock.schedule_once)
+        self.immersive.start()
+
     def build(self):
         refresh_background_catalog()
         self.title = 'Simomatch'
@@ -50,6 +56,8 @@ class SimomatchApp(App):
         return False
 
     def on_stop(self):
+        if hasattr(self, 'immersive'):
+            self.immersive.close()
         Window.unbind(on_keyboard=self.on_keyboard)
         if hasattr(self, 'router'):
             self.router.dispose()
@@ -60,12 +68,16 @@ class SimomatchApp(App):
         if hasattr(self, 'router'):
             self.router.get_screen('menu').emblem.stop()
         if hasattr(self, 'audio'):
+            if hasattr(self.audio, 'stop_preview'):
+                self.audio.stop_preview()
             for session in self.audio.sessions:
                 session.stop()
             self.audio.stop_effect('button')
         return True
 
     def on_resume(self):
+        if hasattr(self, 'immersive'):
+            self.immersive.request()
         if hasattr(self, 'router') and self.router.current == 'menu':
             self.router.get_screen('menu').emblem.start()
         view = getattr(getattr(self, 'router', None), 'match_view', None)

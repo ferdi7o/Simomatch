@@ -145,6 +145,31 @@ zamanlayıcısı vardır. Dosya daha kısaysa doğal olarak önce biter. Bir tak
 diğer takımın müziğini etkilemez. Üçüncü ardışık takım müziği aynı takımın dolu
 havuzundan bir yuvayı kullanır; diğer takımın kanallarını kesmez.
 
+Takım ekranındaki MÜZİK BAŞLANGICI kaydırıcısı ve TEST ET düğmesi aynı oynatma yolunu
+kullanır. `goal_music_start_seconds` takım JSON'una eklenir; eski kayıtlarda 0 kabul
+edilir ve dosyalar sırf okunurken yeniden yazılmaz. Bilinen dosya süresinde üst sınır
+`max(0, süre - 5)` saniyedir. Müzik süresi okunamazsa kaydırıcı ve test devre dışıdır.
+İlk 3,5 saniye normal ses, son 1,5 saniye mevcut yumuşak fade-out uygulanır.
+Android takım müzikleri bağımsız MediaPlayer nesneleri kullanır; saniyeler tamsayı
+milisaniyeye çevrilir. Windows'ta SDL_mixer PCM verisine örnek hizalı bağımsız
+görünümlerle seek uygulanır; efekt sağlayıcısı değiştirilmez. Başlangıç konumu
+doğrulanana kadar müzik sessizdir. Seek desteklenmez veya konuma ulaşılamazsa
+ses durdurulur ve günlük/diagnostics alanına hata yazılır; başarı varsayılmaz.
+
+Android tam ekran `services/android_display.py` ile Activity UI thread'inde uygulanır.
+API 30+ WindowInsetsController kullanır; eski sürümlerde mevcutsa p4a'nın
+`set_immersive_mode(True, True, True)` yardımcısı, yoksa immersive-sticky bayrakları
+kullanılır. `buildozer.spec` içinde `fullscreen = 1` bulunur. Çentik güvenli alanları
+native içerik padding'ine uygulanır; fizik koordinatları değiştirilmez. Odak ve
+boyut değişimlerinde ayar yeniden uygulanır, kapanışta bağlar ve Clock işi temizlenir.
+Gerçek Android cihazda gesture pill, çentik, geri hareketi ve MediaPlayer başlangıç
+konumu ayrıca doğrulanmalıdır. Windows testleri bu cihaz doğrulamasının yerine geçmez.
+
+Sonuç kartlarının dakikaları motor verisinden ilgili takım sütununa aktarılır.
+Kart satırları sınırsız dikey `text_size` ve gerçek texture yüksekliği kullanır;
+Android yoğunluğunda satıra sığmayan metin artık sabit yükseklikte kırpılmaz.
+Canvas kart simgeleri korunur; kalabalık listeler mevcut ScrollView içinde kayar.
+
 Varsayılan efekt seviyesi %32, özel müzik seviyesi %28'dir. `set_effects_volume()`
 gelecekteki genel ses ayarına bağlanabilir. Sarı/kırmızı kart sesleri hazır olay
 eşlemelerine sahiptir (`yellow_card`/`red_card`). Kart sesleri, sıradaki kart

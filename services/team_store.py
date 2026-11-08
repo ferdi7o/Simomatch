@@ -1,10 +1,23 @@
 """Atomic JSON storage and owned media copies. Independent of the UI."""
-import imghdr
+from services.image_format import image_format
 import json
 import shutil
 import unicodedata
 from pathlib import Path
 from uuid import uuid4
+from math import isfinite
+
+
+def music_start(value):
+    if isinstance(value, bool):
+        raise ValueError('Müzik başlangıcı geçerli bir saniye değeri olmalıdır.')
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        raise ValueError('Müzik başlangıcı geçerli bir saniye değeri olmalıdır.') from None
+    if not isfinite(value) or value < 0:
+        raise ValueError('Müzik başlangıcı negatif veya sonsuz olamaz.')
+    return value
 
 
 def normalized_name(name):
@@ -38,7 +51,12 @@ class TeamStore:
                 for field in ('logo', 'music'):
                     if not isinstance(row.get(field, ''), str):
                         raise ValueError('Geçersiz dosya yolu')
-                result.append(dict(id=key, name=name, logo=row.get('logo', ''), music=row.get('music', '')))
+                try:
+                    start = music_start(row.get('goal_music_start_seconds', 0.))
+                except ValueError:
+                    start = 0.
+                result.append(dict(id=key, name=name, logo=row.get('logo', ''), music=row.get('music', ''),
+                                   goal_music_start_seconds=start))
                 ids.add(key)
                 names.add(name.casefold())
             return result
@@ -68,7 +86,7 @@ class TeamStore:
             raise ValueError('Logo PNG/JPG, gol müziği MP3 dosyası olmalıdır.')
         if not 0 < path.stat().st_size <= 32 * 1024 * 1024:
             raise ValueError('Dosya boş veya 32 MB sınırından büyük.')
-        if kind == 'logo' and imghdr.what(path) not in ('png', 'jpeg'):
+        if kind == 'logo' and image_format(path) not in ('png', 'jpeg'):
             raise ValueError('Görsel dosyası bozuk veya desteklenmiyor.')
         if kind == 'music':
             with path.open('rb') as stream:
@@ -91,7 +109,7 @@ class TeamStore:
         self.teams = teams
         self.warning = ''
 
-    def save(self, name, logo=None, music=None, team_id=None):
+    def save(self, name, logo=None, music=None, team_id=None, goal_music_start_seconds=None):
         """None preserves media on edit; an empty string explicitly removes it."""
         name = normalized_name(name)
         if not name or len(name) > 40:
@@ -102,6 +120,8 @@ class TeamStore:
         if team_id and not old:
             raise ValueError('Düzenlenecek takım bulunamadı.')
         row = dict(old or dict(id=uuid4().hex, logo='', music=''), name=name)
+        row['goal_music_start_seconds'] = music_start(goal_music_start_seconds if goal_music_start_seconds is not None
+                                                     else row.get('goal_music_start_seconds', 0.))
         created = []
         try:
             for kind, source in [('logo', logo), ('music', music)]:
@@ -109,6 +129,8 @@ class TeamStore:
                     row[kind] = self._copy(source, kind) if source else ''
                     if row[kind]:
                         created.append(self.root / row[kind])
+            if not row['music']:
+                row['goal_music_start_seconds'] = 0.
             self._commit([row if t['id'] == row['id'] else t for t in self.teams] if old else self.teams + [row])
         except Exception:
             for path in created:

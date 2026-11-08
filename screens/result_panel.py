@@ -4,13 +4,14 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.boxlayout import BoxLayout
+from kivy.metrics import dp
 from screens.match_visuals import LogoDrawing
 
 
 class CardRow(FloatLayout):
     """A real Canvas card icon, with ordinary text independent of emoji fonts."""
     def __init__(self, kind, minute, **kwargs):
-        super().__init__(size_hint=(1, None), height=26, **kwargs)
+        super().__init__(size_hint=(1, None), height=dp(28), **kwargs)
         self.kind, self.minute = kind, minute
         with self.canvas.before:
             self.icon_color = Color(*((1, .81, .15, 1) if kind == 'yellow_card' else (1, .2, .2, 1)))
@@ -18,16 +19,25 @@ class CardRow(FloatLayout):
         self.text = Label(text=f"{minute}' {'SARI' if kind == 'yellow_card' else 'KIRMIZI'}",
                           size_hint=(None, None), halign='left', valign='middle')
         self.add_widget(self.text)
+        self.text.bind(texture_size=self.fit_text)
         self.bind(pos=self.layout_row, size=self.layout_row)
         self.layout_row()
 
     def layout_row(self, *args):
-        width, height = self.height*.32, self.height*.52
-        self.icon.pos = (self.x+self.width*.06, self.center_y-height/2)
+        width, height = max(dp(7), self.text.font_size*.4), max(dp(12), self.text.font_size*.75)
+        self.icon.pos = (self.x+self.width*.04, self.y+(self.height-height)/2)
         self.icon.size = (width, height)
-        self.text.pos = (self.icon.pos[0]+width+5, self.y)
-        self.text.size = (max(1, self.right-self.text.x-2), self.height)
-        self.text.text_size = self.text.size
+        self.text.pos = (self.icon.pos[0]+width+dp(5), self.y)
+        self.text.size = (max(1, self.x+self.width-self.text.x-dp(2)), self.height)
+        self.text.text_size = (self.text.width, None)
+
+    def fit_text(self, *_):
+        self.height = max(dp(28), self.text.texture_size[1]+dp(6))
+
+    def set_font_size(self, size):
+        self.text.font_size = size
+        self.text.texture_update()
+        self.fit_text()
 
 
 class ResultPanel(FloatLayout):
@@ -146,5 +156,4 @@ class ResultPanel(FloatLayout):
             scroll.pos, scroll.size = (cx-w*.21, self.y+h*.055), (w*.42, h*.435)
             self.goal_labels[i].font_size = max(14, min(w*.047, h*.047))
             for row in self.card_rows[i]:
-                row.text.font_size = self.goal_labels[i].font_size
-                row.height = max(24, row.text.font_size*1.6)
+                row.set_font_size(self.goal_labels[i].font_size)

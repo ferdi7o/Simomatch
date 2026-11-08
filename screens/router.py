@@ -44,5 +44,6 @@ class AppRouter(ScreenManager):
     def dispose(self):
         self.get_screen('menu').dispose()
         self.get_screen('setup').on_pre_leave()
+        self.get_screen('teams').on_pre_leave()
         if self.match_view:
             self.match_view.dispose()
