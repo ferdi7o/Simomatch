@@ -50,6 +50,12 @@ class SetupScreen(Page):
         self.spinners, self.previews, self.sliders, self.size_labels = [], [], [], []
         self.team_names, self.team_cards = [], []
         self.logo_placeholders = []
+        self.music_starts, self.music_durations, self.music_values, self.music_buttons = [], [], [], []
+        self.music_paths, self.music_lengths = [None, None], [0., 0.]
+        self._configuring_music = False
+        self._music_changes = {}
+        self._music_save_event = None
+        self._music_test_event, self._music_test_index = None, None
         # Restyle only this Page instance. Other menus keep their existing UI.
         next(instruction for instruction in self.canvas.before.children if isinstance(instruction, Color)).rgba = BG
         self.shell.spacing = dp(9)
@@ -95,6 +101,22 @@ class SetupScreen(Page):
             slider.bind(value=lambda widget, value, i=index: self.set_size(i, value))
             self.sliders.append(slider)
             column.add_widget(slider)
+            column.add_widget(label('GOL MÜZİĞİ', height=18, bold=True, color=ACCENT, font_size=dp(10)))
+            values = []
+            for kind, text, default in (('start', 'Başlangıç', 0.), ('duration', 'Süre', 5.)):
+                value_label = label(f'{text} · {default:.1f} sn', height=18, font_size=dp(10), color=MUTED)
+                values.append(value_label)
+                column.add_widget(value_label)
+                control = NeonSlider(min=0 if kind == 'start' else .1, max=5, value=default,
+                                     step=.1, size_hint_y=None, height=dp(30), disabled=True)
+                control.bind(value=lambda _, value, i=index, k=kind: self.change_music(i, k))
+                (self.music_starts if kind == 'start' else self.music_durations).append(control)
+                column.add_widget(control)
+            self.music_values.append(values)
+            test_button = Action('TEST ET', lambda i=index: self.test_music(i), height=dp(32), font_size=dp(10))
+            test_button.disabled = True
+            self.music_buttons.append(test_button)
+            column.add_widget(test_button)
             columns.add_widget(column)
             self.team_cards.append(column)
         self.columns = columns
@@ -206,8 +228,120 @@ class SetupScreen(Page):
     def responsive(self, *_):
         # Density-aware padding, with a bottom inset for navigation/gesture area.
         inset = min(dp(18), max(dp(10), self.width*.035))
-        self.shell.padding = (inset, dp(10), inset, dp(20))
-        self.columns.height = min(dp(360), max(dp(274), self.width*.62))
+        left, top, right, bottom = getattr(self, 'safe_insets', (0, 0, 0, 0))
+        self.shell.padding = (inset+left, dp(10)+top, inset+right, dp(20)+bottom)
+        self.columns.height = min(dp(530), max(dp(444), self.width*.62+dp(170)))
+
+    def configure_music(self, index, team):
+        self.stop_music_test(index)
+        audio = getattr(self.router, 'audio', None)
+        path = self.router.store.asset_path(team.get('music', '')) if team else None
+        length = audio.music_length(path) if audio and hasattr(audio, 'music_length') else 0.
+        self.music_paths[index], self.music_lengths[index] = path, length
+        self._configuring_music = True
+        try:
+            start = team.get('goal_music_start_seconds', 0.) if team else 0.
+            duration = team.get('goal_music_duration_seconds', 5.) if team else 5.
+            # Unknown metadata disables editing rather than guessing a file length.
+            if length:
+                duration = min(duration, length)
+                start = min(start, max(0., length-duration))
+            a, b = self.music_starts[index], self.music_durations[index]
+            a.max = max(0., length-duration) if length else max(0., start)
+            b.min = min(.1, length) if length else .1
+            b.max = max(b.min, length-start) if length else max(.1, duration)
+            a.value, b.value = start, duration
+            a.disabled = b.disabled = not bool(path and length)
+            self.music_buttons[index].disabled = a.disabled
+            self.update_music_labels(index)
+        finally:
+            self._configuring_music = False
+        if team and length and (start != team.get('goal_music_start_seconds', 0.)
+                                or duration != team.get('goal_music_duration_seconds', 5.)):
+            self.change_music(index, 'start')
+        if path and not length:
+            self.status.text = 'MP3 süresi okunamadı; müzik testi ve zaman ayarları kullanılamıyor.'
+
+    def update_music_labels(self, index):
+        self.music_values[index][0].text = f'Başlangıç · {self.music_starts[index].value:.1f} sn'
+        self.music_values[index][1].text = f'Süre · {self.music_durations[index].value:.1f} sn'
+
+    def change_music(self, index, kind):
+        if self._configuring_music or not self.selected_ids[index]:
+            return
+        self.stop_music_test(index)
+        self._configuring_music = True
+        try:
+            a, b = self.music_starts[index], self.music_durations[index]
+            length = self.music_lengths[index]
+            if kind == 'duration':
+                b.value = max(b.min, min(b.value, length-a.value))
+            else:
+                a.value = max(0., min(a.value, length-b.value))
+            a.max = max(0., length-b.value)
+            b.max = max(b.min, length-a.value)
+            self.update_music_labels(index)
+            self._music_changes[self.selected_ids[index]] = (a.value, b.value)
+        finally:
+            self._configuring_music = False
+        if self._music_save_event:
+            self._music_save_event.cancel()
+        self._music_save_event = Clock.schedule_once(self.flush_music_settings, .35)
+
+    def flush_music_settings(self, *_):
+        if self._music_save_event:
+            self._music_save_event.cancel()
+            self._music_save_event = None
+        try:
+            for key, values in list(self._music_changes.items()):
+                self.router.store.set_music_settings(key, *values)
+                del self._music_changes[key]
+            return True
+        except (OSError, ValueError) as exc:
+            self.status.text = f'Müzik ayarları kaydedilemedi: {exc}'
+            return False
+
+    def stop_music_test(self, index=None):
+        if index is not None and index != self._music_test_index:
+            return
+        if self._music_test_event:
+            self._music_test_event.cancel()
+            self._music_test_event = None
+        audio = getattr(self.router, 'audio', None)
+        if audio and hasattr(audio, 'stop_preview'):
+            audio.stop_preview()
+        self._music_test_index = None
+        for button in self.music_buttons:
+            button.text = 'TEST ET'
+
+    def test_music(self, index):
+        if self._music_test_index == index:
+            self.stop_music_test()
+            return
+        self.stop_music_test()
+        audio = getattr(self.router, 'audio', None)
+        path = self.music_paths[index]
+        if not audio or not path:
+            self.status.text = 'Önce takıma okunabilir bir MP3 ekleyin.'
+            return
+        if not audio.preview_music(path, self.music_starts[index].value, self.music_durations[index].value):
+            self.status.text = 'Müzik testi başlatılamadı: '+audio.diagnostics.get('music', 'MP3 okunamadı.')
+            return
+        self._music_test_index = index
+        self.music_buttons[index].text = 'DURDUR'
+        self.update_music_test()
+
+    def update_music_test(self, *_):
+        audio = getattr(self.router, 'audio', None)
+        voice = audio.preview_pool[0] if audio and audio.preview_pool else None
+        if not voice or not voice.busy:
+            if voice and voice.error:
+                self.status.text = 'Müzik testi başarısız: '+voice.error
+            self.stop_music_test()
+            return
+        if voice.seek_status == 'pending':
+            self.status.text = 'Müzik başlangıç konumu doğrulanıyor.'
+        self._music_test_event = Clock.schedule_once(self.update_music_test, .1)
 
     def adjust_duration(self, delta):
         self.duration_input.commit(self.duration_input, False)
@@ -358,6 +492,8 @@ class SetupScreen(Page):
             self.team_dialog = None
 
     def on_pre_leave(self, *_):
+        self.stop_music_test()
+        self.flush_music_settings()
         self.preview_trigger.cancel()
         if self.delete_dialog:
             self.delete_dialog.dismiss()
@@ -383,7 +519,11 @@ class SetupScreen(Page):
             self.spinners[index].text = saved['name'] if saved else 'Takım seç'
             self.status.text = 'İki farklı takım seçin.'
             return
+        self.flush_music_settings()
+        # Fetch metadata again: by_name is a snapshot made when entering the page.
+        team = self.router.store.get(team['id']) if team else None
         self.selected_ids[index] = team['id'] if team else None
+        self.configure_music(index, team)
         self.previews[index].texture = load_texture(self.router.store.asset_path(team['logo'])) if team else None
         self.team_names[index].text = team['name'] if team else 'Takım seçin'
         self.logo_placeholders[index].text = team['name'][:2].upper() if team else 'TAKIM'
@@ -418,6 +558,9 @@ class SetupScreen(Page):
         self.save_preferences()
 
     def start_match(self):
+        self.stop_music_test()
+        if not self.flush_music_settings():
+            return
         try:
             if len(self.router.store.teams) < 2:
                 raise ValueError('Maç için en az iki takım oluşturun.')

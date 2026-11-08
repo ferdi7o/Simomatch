@@ -13,6 +13,7 @@ class AppRouter(ScreenManager):
         self.audio = audio
         self.background_data_dir = background_data_dir or getattr(store, 'root', None)
         self.match_view = None
+        self.safe_insets = (0, 0, 0, 0)
         self.history = []
         self.add_widget(MenuScreen(self, name='menu'))
         self.add_widget(TeamScreen(self, name='teams'))
@@ -39,7 +40,16 @@ class AppRouter(ScreenManager):
         self.match_page.clear_widgets()
         self.match_view = MatchScreen(settings=settings, store=self.store, on_back=self.back, audio=self.audio)
         self.match_page.add_widget(self.match_view)
+        self.match_view.set_safe_insets(self.safe_insets)
         self.go('match')
+
+    def set_safe_insets(self, insets):
+        self.safe_insets = insets
+        for page in self.screens:
+            if hasattr(page, 'set_safe_insets'):
+                page.set_safe_insets(insets)
+        if self.match_view:
+            self.match_view.set_safe_insets(insets)
 
     def dispose(self):
         self.get_screen('menu').dispose()

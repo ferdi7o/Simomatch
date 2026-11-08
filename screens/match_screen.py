@@ -154,6 +154,10 @@ class MatchScreen(FloatLayout):
         self.add_widget(label)
         return label
 
+    def set_safe_insets(self, insets):
+        self.safe_insets = insets
+        self.layout_scene()
+
     def layout_scene(self, *_):
         w, h = self.size
         self.background.pos, self.background.size = self.pos, self.size
@@ -179,20 +183,25 @@ class MatchScreen(FloatLayout):
         # Recenter after changing widths; Widget.center depends on current size.
         self.score.center = (self.x+w/2, self.y+h*.925)
         self.minute_label.center = (self.x+w/2, self.y+h*.855)
+        left, safe_top, right, safe_bottom = getattr(self, 'safe_insets', (0, 0, 0, 0))
+        # Only foreground HUD moves: the full-screen background and arena do not.
+        header_shift = max(0., safe_top-h*.007)
+        self.score.y -= header_shift
+        self.minute_label.y -= header_shift
         self.score.font_size = min(w * .105, h * .06)
         self.score.text_size = self.score.size
         for i, (logo, name) in enumerate(zip(self.header_logos, self.team_names)):
             x = self.x+w*(.18 if i == 0 else .82)
             # 1.7x header-only scale; arena logo radii remain unchanged.
-            logo.layout(x, self.y+h*.925, 1.7*min(w*.065, h*.04))
+            logo.layout(x, self.y+h*.925-header_shift, 1.7*min(w*.065, h*.04))
             name.size = (w*.30, h*.045)
-            name.center = (x, self.y+h*.825)
+            name.center = (x, self.y+h*.825-header_shift)
             name.text_size = name.size
             name.font_size = min(w*.037, h*.024)
         self.minute_label.font_size = min(w * .045, h * .03)
         self.notice.font_size = min(w * .14, h * .1)
         for i, indicator in enumerate(self.card_indicators):
-            indicator.pos = (self.x+w*(.005 if i == 0 else .935), self.y+h*.885)
+            indicator.pos = (self.x+w*(.005 if i == 0 else .935), self.y+h*.885-header_shift)
             indicator.size = (w*.06, h*.075)
         # Reserve the full moving goal depth; never move/resize the arena.
         bottom = cy+r*1.26+h*.003
@@ -205,10 +214,10 @@ class MatchScreen(FloatLayout):
         self.result_panel.pos = (self.x+w*.03, self.y+h*.18)
         self.result_panel.size = (w*.94, h*.60)
         self.restart_button.size = (w * .65, h * .065)
-        self.restart_button.center = (self.x+w/2, self.y+h * .1)
+        self.restart_button.center = (self.x+w/2, self.y+h * .1+safe_bottom)
         self.restart_button.font_size = min(w*.045, h*.025)
         self.back_button.size = (w*.5, h*.045)
-        self.back_button.center = (self.x+w/2, self.y+h*.035)
+        self.back_button.center = (self.x+w/2, self.y+h*.035+safe_bottom)
         self.back_button.font_size = min(w*.035, h*.022)
         self.draw_scene()
 

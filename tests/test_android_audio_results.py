@@ -263,11 +263,16 @@ def test_android_immersive_ui_thread_controller_cutout_and_cleanup(monkeypatch):
         calls.append(call)
     cutout = SimpleNamespace(getSafeInsetLeft=lambda:0, getSafeInsetTop=lambda:72,
                              getSafeInsetRight=lambda:0, getSafeInsetBottom=lambda:0)
-    decor = SimpleNamespace(getRootWindowInsets=lambda:SimpleNamespace(getDisplayCutout=lambda:cutout))
+    decor = SimpleNamespace(getRootWindowInsets=lambda:SimpleNamespace(getDisplayCutout=lambda:cutout),
+                            getWidth=lambda:1080, getHeight=lambda:1920)
     controller = SimpleNamespace(setSystemBarsBehavior=lambda x:ensure(('behavior', x)), hide=lambda x:ensure(('hide', x)))
     native = SimpleNamespace(getDecorView=lambda:decor, setDecorFitsSystemWindows=lambda x:ensure(('fits', x)),
                              getInsetsController=lambda:controller, setNavigationBarContrastEnforced=lambda _:None,
                              setStatusBarContrastEnforced=lambda _:None,
+                             getAttributes=lambda:SimpleNamespace(),
+                             setAttributes=lambda a:ensure(('cutout', a.layoutInDisplayCutoutMode)),
+                             setStatusBarColor=lambda c:ensure(('status_color', c)),
+                             setNavigationBarColor=lambda c:ensure(('navigation_color', c)),
                              findViewById=lambda _:SimpleNamespace(setPadding=lambda *x:ensure(('padding', x))))
     mapping = {'org.kivy.android.PythonActivity':SimpleNamespace(mActivity=SimpleNamespace(getWindow=lambda:native)),
                'android.os.Build$VERSION':SimpleNamespace(SDK_INT=35),
@@ -285,12 +290,29 @@ def test_android_immersive_ui_thread_controller_cutout_and_cleanup(monkeypatch):
     for name, module in [('android', android), ('android.runnable', runnable), ('jnius', jnius)]:
         monkeypatch.setitem(sys.modules, name, module)
     clock = Scheduler()
-    window = SimpleNamespace(bind=lambda **_:None, unbind=lambda **_:None)
-    display = ImmersiveDisplay('android', window, clock.schedule)
+    window = SimpleNamespace(bind=lambda **_:None, unbind=lambda **_:None, width=450, height=800)
+    safe_insets = []
+    def receive_safe(value):
+        assert not on_ui[0]  # Kivy foreground changes must run on Clock, not Java's UI thread.
+        safe_insets.append(value)
+    display = ImmersiveDisplay('android', window, clock.schedule, receive_safe)
     display.start(); first = display.pending; display.focus(None, True)
     assert first.cancelled
     clock.advance(.2)
-    assert ('hide', 3) in calls and ('behavior', 2) in calls and ('padding', (0,72,0,0)) in calls
+    assert ('hide', 3) in calls and ('behavior', 2) in calls and ('padding', (0,0,0,0)) in calls
+    assert ('cutout', 3) in calls and ('fits', False) in calls
+    assert ('status_color', 0) in calls and ('navigation_color', 0) in calls
+    assert safe_insets == [(0, 30, 0, 0)]
+    # Retry attachment only a bounded number of times; later focus requests
+    # can start a fresh attempt without leaking Clock events after close.
+    native.getInsetsController = lambda:None
+    display.request()
+    clock.advance(2)
+    assert display.attach_attempts == 3
+    native.getInsetsController = lambda:controller
+    display.focus(None, True)
+    clock.advance(2.2)
+    assert display.diagnostics == 'WindowInsetsController'
     display.request(); pending = display.pending
     display.close(); pending.callback(.15)
     assert pending.cancelled and not display.active
@@ -299,7 +321,8 @@ def test_android_immersive_ui_thread_controller_cutout_and_cleanup(monkeypatch):
 def test_older_android_uses_available_p4a_immersive_helper(monkeypatch):
     calls = []
     native = SimpleNamespace(getDecorView=lambda:None, setNavigationBarContrastEnforced=lambda _:None,
-                             setStatusBarContrastEnforced=lambda _:None)
+                             setStatusBarContrastEnforced=lambda _:None,
+                             setStatusBarColor=lambda _:None, setNavigationBarColor=lambda _:None)
     jnius = ModuleType('jnius')
     jnius.autoclass = lambda name:(SimpleNamespace(SDK_INT=27) if name == 'android.os.Build$VERSION'
                                    else SimpleNamespace(mActivity=SimpleNamespace(getWindow=lambda:native)))

@@ -187,21 +187,29 @@ class MenuScreen(Screen):
         for i, shape in enumerate(self.ambient):
             radius = min(w*.75, h*.42)*(1-i*.1)
             shape.pos, shape.size = (cx-radius, self.y+h*.69-radius), (radius*2, radius*2)
+        left, top, right, bottom = getattr(self, 'safe_insets', (0, 0, 0, 0))
+        w, h = max(1, w-left-right), max(1, h-top-bottom)
+        cx = self.x+left+w/2
+        origin = self.y+bottom
         emblem_size = min(w*.64, h*.27, dp(290))
         self.emblem.size = (emblem_size, emblem_size)
-        self.emblem.center = (cx, self.y+h*.735)
+        self.emblem.center = (cx, origin+h*.735)
         for title in (self.title_label, self.title_glow):
             title.font_size = min(w*.095, dp(48))
-            title.size, title.center = (w*.92, h*.075), (cx, self.y+h*.54)
+            title.size, title.center = (w*.92, h*.075), (cx, origin+h*.54)
         self.title_glow.y -= dp(2)
         self.tagline.font_size = min(dp(15), w*.038)
-        self.tagline.size, self.tagline.center = (w*.9, h*.045), (cx, self.y+h*.47)
+        self.tagline.size, self.tagline.center = (w*.9, h*.045), (cx, origin+h*.47)
         width, height = min(w-dp(48), dp(360)), min(dp(56), max(dp(46), h*.065))
         gap = min(dp(15), h*.019)
         for i, button in enumerate((self.match_button, self.team_button, self.exit_button)):
             button.size = (width, height)
-            button.pos = (cx-width/2, self.y+h*.395-height-i*(height+gap))
-        self.footer.size, self.footer.center = (w*.9, dp(24)), (cx, self.y+h*.055)
+            button.pos = (cx-width/2, origin+h*.395-height-i*(height+gap))
+        self.footer.size, self.footer.center = (w*.9, dp(24)), (cx, origin+h*.055)
+
+    def set_safe_insets(self, insets):
+        self.safe_insets = insets
+        self.layout_menu()
 
     def on_enter(self, *_):
         self.emblem.start()

@@ -16,6 +16,7 @@ class TeamScreen(Page):
         self.edit_id = None
         self.pending_logo = self.pending_music = None
         self.music_length = 0.
+        self.music_duration = 5.
         self.test_status_event = None
         self.name_input = TextInput(hint_text='Takım adı', multiline=False, size_hint_y=None,
                                     height=dp(44), background_color=(.13, .11, .2, 1), foreground_color=(1, 1, 1, 1))
@@ -37,7 +38,7 @@ class TeamScreen(Page):
         self.content.add_widget(self.music_start_slider)
         self.test_music_button = button('TEST ET', self.test_music, secondary=True)
         self.content.add_widget(self.test_music_button)
-        self.content.add_widget(caption('Gollerde özel müzik 5 saniye çalınır.', height=36))
+        self.content.add_widget(caption('Çalma süresini Maç Oluştur ekranından ayarlayabilirsiniz.', height=42))
         clears = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(8))
         clears.add_widget(button('Logoyu kaldır', lambda: self.clear_media('logo'), secondary=True))
         clears.add_widget(button('MP3 kaldır', lambda: self.clear_media('music'), secondary=True))
@@ -70,11 +71,12 @@ class TeamScreen(Page):
         team = self.router.store.get(self.edit_id) if self.edit_id else None
         return self.router.store.asset_path(team.get('music', '')) if team else None
 
-    def configure_music(self, path, start=0.):
+    def configure_music(self, path, start=0., duration=5.):
         self.cancel_test_status()
+        self.music_duration = duration
         audio = getattr(self.router, 'audio', None)
         self.music_length = audio.prepare_preview(path) if audio and hasattr(audio, 'prepare_preview') else 0.
-        self.music_start_slider.max = max_music_start(self.music_length) if self.music_length else max(0., start)
+        self.music_start_slider.max = max_music_start(self.music_length, duration) if self.music_length else max(0., start)
         self.music_start_slider.value = min(start, self.music_start_slider.max)
         self.music_start_slider.disabled = self.music_length <= 0
         self.test_music_button.disabled = not path or self.music_length <= 0
@@ -86,7 +88,7 @@ class TeamScreen(Page):
         if not audio or not path:
             self.status.text = 'Önce okunabilir bir MP3 seçin.'
             return
-        if audio.preview_music(path, self.music_start_slider.value):
+        if audio.preview_music(path, self.music_start_slider.value, self.music_duration):
             self.update_test_status()
         else:
             self.status.text = 'Müzik testi başlatılamadı: '+audio.diagnostics.get('music', 'dosya veya ses sağlayıcısı okunamadı.')
@@ -102,7 +104,7 @@ class TeamScreen(Page):
         elif voice.error:
             self.status.text = 'Müzik testi başarısız: '+voice.error
         else:
-            self.status.text = 'Müzik testi çalıyor; süre en fazla 5 saniye.'
+            self.status.text = f'Müzik testi çalıyor; süre en fazla {self.music_duration:g} saniye.'
 
     def refresh_list(self):
         self.team_list.clear_widgets()
@@ -167,17 +169,19 @@ class TeamScreen(Page):
         self.preview.texture = load_texture(logo)
         self.logo_label.text = 'Kayıtlı logo' if self.preview.texture else 'Logo yok veya okunamıyor'
         self.music_label.text = 'Kayıtlı MP3' if music else 'MP3 yok veya bulunamadı'
-        self.configure_music(music, team.get('goal_music_start_seconds', 0.))
+        self.configure_music(music, team.get('goal_music_start_seconds', 0.),
+                             team.get('goal_music_duration_seconds', 5.))
         self.status.text = 'Takım düzenleniyor. Değişikliklerden sonra Kaydet düğmesine basın.'
 
     def save(self):
         try:
             if self.pending_logo and load_texture(self.pending_logo) is None:
                 raise ValueError('Seçilen logo artık okunamıyor; yeniden seçin.')
-            if self.music_length and self.music_start_slider.value > max_music_start(self.music_length):
-                raise ValueError('Seçilen 5 saniyelik bölüm dosya sonunu aşamaz.')
+            if self.music_length and self.music_start_slider.value > max_music_start(self.music_length, self.music_duration):
+                raise ValueError('Seçilen bölüm dosya sonunu aşamaz.')
             self.router.store.save(self.name_input.text, self.pending_logo, self.pending_music, self.edit_id,
-                                   goal_music_start_seconds=self.music_start_slider.value)
+                                   goal_music_start_seconds=self.music_start_slider.value,
+                                   goal_music_duration_seconds=self.music_duration)
         except (ValueError, OSError) as exc:
             self.status.text = str(exc)
             return

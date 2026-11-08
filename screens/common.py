@@ -55,3 +55,10 @@ class Page(Screen):
 
     def _background(self, *_):
         self.bg.pos, self.bg.size = self.pos, self.size
+
+    def set_safe_insets(self, insets):
+        self.safe_insets = insets
+        if hasattr(self, 'responsive'):
+            self.responsive()
+        else:
+            self.shell.padding = tuple(dp(16)+value for value in insets)

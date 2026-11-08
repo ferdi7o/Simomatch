@@ -11,6 +11,8 @@ from config import WINDOW_SIZE
 if platform not in ('android', 'ios'):
     Config.set('graphics', 'width', str(WINDOW_SIZE[0]))
     Config.set('graphics', 'height', str(WINDOW_SIZE[1]))
+elif platform == 'android':
+    Config.set('graphics', 'fullscreen', 'auto')
 Config.set('graphics', 'maxfps', '120')
 
 from kivy.app import App
@@ -26,8 +28,9 @@ from services.android_display import ImmersiveDisplay
 class SimomatchApp(App):
     def on_start(self):
         from kivy.clock import Clock
-        self.immersive = ImmersiveDisplay(platform, Window, Clock.schedule_once)
+        self.immersive = ImmersiveDisplay(platform, Window, Clock.schedule_once, self.router.set_safe_insets)
         self.immersive.start()
+        self.router.bind(current=self.immersive.request)
 
     def build(self):
         refresh_background_catalog()
@@ -57,6 +60,7 @@ class SimomatchApp(App):
 
     def on_stop(self):
         if hasattr(self, 'immersive'):
+            self.router.unbind(current=self.immersive.request)
             self.immersive.close()
         Window.unbind(on_keyboard=self.on_keyboard)
         if hasattr(self, 'router'):

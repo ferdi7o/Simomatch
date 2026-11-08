@@ -104,6 +104,8 @@ class Voice:
             if not isfinite(start_seconds) or start_seconds < 0:
                 raise ValueError('Invalid music start time')
             if seconds is not None:
+                if not isfinite(seconds) or seconds <= 0:
+                    raise ValueError('Invalid music duration')
                 length = float(self.sound.length)
                 if start_seconds > max_music_start(length, seconds)+1e-6:
                     raise ValueError('Music start exceeds the available clip length')
@@ -179,6 +181,7 @@ class AudioManager:
             music_loader = lambda path: load_music(path, loader)
         self.music_loader = music_loader or loader
         self.preview_pool, self.preview_path = [], ""
+        self.music_lengths = {}
         self.root = Path(sounds_dir or Path(__file__).resolve().parents[1] / 'assets' / 'sounds')
         self.effects_volume, self.music_volume = .32, .28
         self.music_seconds = 5.
@@ -267,10 +270,30 @@ class AudioManager:
             self.preview_pool = self._load_pool(path, 1, music=True) if path else []
         return self.preview_pool[0].sound.length if self.preview_pool else 0.
 
-    def preview_music(self, path, start_seconds=0.):
+    def music_length(self, path):
+        """Read metadata without interrupting another team's active preview."""
+        if not path:
+            return 0.
+        try:
+            file = Path(path)
+            key = (str(file), file.stat().st_mtime_ns, file.stat().st_size)
+        except OSError:
+            return 0.
+        if key not in self.music_lengths:
+            voices = self._load_pool(path, 1, music=True)
+            length = float(voices[0].sound.length) if voices else 0.
+            for voice in voices:
+                voice.close()
+            if len(self.music_lengths) >= 32:
+                self.music_lengths.pop(next(iter(self.music_lengths)))
+            self.music_lengths[key] = length
+        return self.music_lengths[key]
+
+    def preview_music(self, path, start_seconds=0., duration_seconds=None):
         self.prepare_preview(path)
         self.stop_preview()
-        return self._play_pool(self.preview_pool, self.music_volume, self.music_seconds,
+        return self._play_pool(self.preview_pool, self.music_volume,
+                               self.music_seconds if duration_seconds is None else duration_seconds,
                                fade_seconds=self.music_fade_seconds, start_seconds=start_seconds)
 
     def stop_preview(self, unload=False):
@@ -296,7 +319,7 @@ class AudioManager:
 class MatchAudio:
     def __init__(self, manager, teams, store):
         self.manager = manager
-        self.music, self.music_starts = {}, {}
+        self.music, self.music_starts, self.music_durations = {}, {}, {}
         self.round_id, self.last_event = None, 0
         self.closed = False
         self.defer_cards = False
@@ -304,11 +327,12 @@ class MatchAudio:
             path = store.asset_path(team.get('music', '')) if store else None
             self.music[team['name']] = manager._load_pool(path, 2, music=True) if path else []
             self.music_starts[team['name']] = team.get('goal_music_start_seconds', 0.)
+            self.music_durations[team['name']] = team.get('goal_music_duration_seconds', manager.music_seconds)
 
     def goal(self, team):
         self.manager.play('goal')
         return self.manager._play_pool(self.music.get(team, []), self.manager.music_volume,
-                                       self.manager.music_seconds, reuse=True,
+                                       self.music_durations.get(team, self.manager.music_seconds), reuse=True,
                                        fade_seconds=self.manager.music_fade_seconds,
                                        start_seconds=self.music_starts.get(team, 0.))
 

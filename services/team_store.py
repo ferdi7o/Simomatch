@@ -24,6 +24,13 @@ def normalized_name(name):
     return ' '.join(unicodedata.normalize('NFKC', name).split())
 
 
+def music_duration(value):
+    value = music_start(value)
+    if value <= 0:
+        raise ValueError('Müzik süresi sıfırdan büyük olmalıdır.')
+    return value
+
+
 class TeamStore:
     def __init__(self, data_dir):
         self.root = Path(data_dir).resolve()
@@ -55,8 +62,12 @@ class TeamStore:
                     start = music_start(row.get('goal_music_start_seconds', 0.))
                 except ValueError:
                     start = 0.
+                try:
+                    duration = music_duration(row.get('goal_music_duration_seconds', 5.))
+                except ValueError:
+                    duration = 5.
                 result.append(dict(id=key, name=name, logo=row.get('logo', ''), music=row.get('music', ''),
-                                   goal_music_start_seconds=start))
+                                   goal_music_start_seconds=start, goal_music_duration_seconds=duration))
                 ids.add(key)
                 names.add(name.casefold())
             return result
@@ -109,7 +120,8 @@ class TeamStore:
         self.teams = teams
         self.warning = ''
 
-    def save(self, name, logo=None, music=None, team_id=None, goal_music_start_seconds=None):
+    def save(self, name, logo=None, music=None, team_id=None, goal_music_start_seconds=None,
+             goal_music_duration_seconds=None):
         """None preserves media on edit; an empty string explicitly removes it."""
         name = normalized_name(name)
         if not name or len(name) > 40:
@@ -122,6 +134,8 @@ class TeamStore:
         row = dict(old or dict(id=uuid4().hex, logo='', music=''), name=name)
         row['goal_music_start_seconds'] = music_start(goal_music_start_seconds if goal_music_start_seconds is not None
                                                      else row.get('goal_music_start_seconds', 0.))
+        row['goal_music_duration_seconds'] = music_duration(goal_music_duration_seconds if goal_music_duration_seconds is not None
+                                                           else row.get('goal_music_duration_seconds', 5.))
         created = []
         try:
             for kind, source in [('logo', logo), ('music', music)]:
@@ -136,6 +150,16 @@ class TeamStore:
             for path in created:
                 path.unlink(missing_ok=True)
             raise
+        return dict(row)
+
+    def set_music_settings(self, team_id, start, duration):
+        """Update metadata only: never copy, replace or delete team media."""
+        row = self.get(team_id)
+        if row is None:
+            raise ValueError('Takım bulunamadı.')
+        row.update(goal_music_start_seconds=music_start(start),
+                   goal_music_duration_seconds=music_duration(duration))
+        self._commit([row if team['id'] == team_id else team for team in self.teams])
         return dict(row)
 
     def delete(self, team_id):
