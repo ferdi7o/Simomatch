@@ -38,6 +38,12 @@ class AndroidMusic:
                         log.warning('MediaPlayer seek callback failed: %s', exc)
         self.listener = Completion(self)
         try:
+            # Playback only. Match the app capture policy before prepare().
+            attributes = autoclass('android.media.AudioAttributes$Builder')()
+            attributes.setUsage(1)  # USAGE_MEDIA
+            if autoclass('android.os.Build$VERSION').SDK_INT >= 29:
+                attributes.setAllowedCapturePolicy(1)  # ALLOW_CAPTURE_BY_ALL
+            self.player.setAudioAttributes(attributes.build())
             self.player.setDataSource(self.path)
             self.player.prepare()
             self.length = self.player.getDuration()/1000.

@@ -71,6 +71,8 @@ class SimomatchApp(App):
     def on_pause(self):
         if hasattr(self, 'router'):
             self.router.get_screen('menu').emblem.stop()
+            if hasattr(self.router, 'pause_recording'):
+                self.router.pause_recording()
         if hasattr(self, 'audio'):
             if hasattr(self.audio, 'stop_preview'):
                 self.audio.stop_preview()

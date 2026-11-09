@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.simomatch.capture">
+    <!-- Avoid implicit legacy storage/phone permissions during manifest merging. -->
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <application android:allowAudioPlaybackCapture="true">
+        <service android:name="org.simomatch.capture.CaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection"
+            android:stopWithTask="false" />
+    </application>
+</manifest>

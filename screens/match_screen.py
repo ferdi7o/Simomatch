@@ -1,7 +1,9 @@
 """Persistent canvas instructions, scaled from the simulation coordinate system."""
 from math import sin, cos, ceil
+from dataclasses import replace
+from config import FIXED_DT
 from kivy.clock import Clock
-from kivy.graphics import Color, Ellipse, Line, Rectangle
+from kivy.graphics import Color, Ellipse, Line, Rectangle, InstructionGroup, Callback
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from screens.glass_button import GlassButton
@@ -15,15 +17,35 @@ from screens.arena_layers import ArenaLayers
 from services.audio import play_button_sound
 from screens.announcements import Announcements, CardIndicators
 from screens.fire_particles import FireParticles
-from screens.electric_effects import ElectricEffects
+from screens.electric_effects import ElectricEffects, electric_probe_mode
 from services.backgrounds import TEXTURES, FALLBACK_COLOR
+from services.graphics_diagnostics import milestone
+from services.arena_gpu_probe import read_arena_probe, first_gpu_marker, particle_renderer
+from services.graphics_probe import plan_for
+from screens.graphics_probe_view import ProbeImage, QuietEffects, audit_view
+from screens.mesh_safety import MeshGuard
 
 
 class MatchScreen(FloatLayout):
-    def __init__(self, settings=None, store=None, on_back=None, audio=None, **kwargs):
+    def __init__(self, settings=None, store=None, on_back=None, audio=None,
+                 recording=None, on_restart=None, graphics_selection=None, **kwargs):
         super().__init__(**kwargs)
         self.settings = settings
+        self.recording, self.on_restart = recording, on_restart
+        self._capture_waiting = self._capture_started = False
+        self._capture_request_sent = False
+        self._capture_start_event = None
+        self._result_flip = None
         self._disposed = False
+        self.graphics_guard = MeshGuard('match_screen')
+        self.graphics_theme = settings.theme if settings else 'neon_purple'
+        self.graphics_plan = plan_for(self.graphics_theme,graphics_selection)
+        self._probe_first_draw = self._probe_first_update = False
+        if self.graphics_plan.active:
+            p = self.graphics_plan
+            milestone('GRAPHICS_PROBE',theme=self.graphics_theme,mode=p.mode,image=p.image,
+                      common=p.common,effect=p.effect,kivy_image=p.simple_image,
+                      renderer=graphics_selection.renderer,owner=self.graphics_guard.owner)
         self._finished_render_key = None
         self.engine = MatchEngine(duration=settings.duration,
                                   teams=(settings.home['name'], settings.away['name']),
@@ -42,8 +64,48 @@ class MatchScreen(FloatLayout):
                 textures[i] = texture
         self.logo_textures = textures
         self.theme = get_theme(settings.theme if settings else 'neon_purple')
-        self.fire_particles = FireParticles() if settings and settings.theme == 'fire_arena' else None
-        self.electric_effects = ElectricEffects() if settings and settings.theme == 'electric_blue' else None
+        selected_theme = self.theme
+        if self.graphics_plan.baseline:
+            self.theme = get_theme('neon_purple')
+        self.gpu_probe = read_arena_probe()
+        if self.graphics_plan.active:
+            # One runtime selection is authoritative; old JSON switches must not
+            # silently make MODE 4 another partial test. Keep production untouched.
+            renderer = graphics_selection.renderer
+            self.gpu_probe = replace(self.gpu_probe,raster=self.graphics_plan.common,
+                                     fire=self.graphics_plan.effect and self.graphics_theme == 'fire_arena',
+                                     electric=self.graphics_plan.effect and self.graphics_theme == 'electric_blue',trace=True,
+                                     custom_shader=self.graphics_plan.effect and renderer != 'flat_probe',
+                                     fire_renderer='auto' if renderer == 'flat_probe' else renderer,
+                                     electric_renderer='auto' if renderer == 'flat_probe' else renderer)
+        if self.graphics_plan.active:
+            actual_renderer = particle_renderer(self.gpu_probe,'fire' if self.graphics_theme == 'fire_arena' else 'electric') if self.graphics_plan.effect else 'none'
+            milestone('ARENA_GPU_PROBE',source='runtime',theme=self.graphics_theme,mode=self.graphics_plan.mode,
+                      image=self.graphics_plan.image,raster=self.gpu_probe.raster,fire=self.gpu_probe.fire,
+                      electric=self.gpu_probe.electric,custom_shader=actual_renderer == 'custom',
+                      renderer=actual_renderer,trace=self.gpu_probe.trace)
+        else:
+            milestone('ARENA_GPU_PROBE',source='asset_json',theme=self.graphics_theme,mode='disabled',
+                      raster=self.gpu_probe.raster,fire=self.gpu_probe.fire,
+                      electric=self.gpu_probe.electric,custom_shader=self.gpu_probe.custom_shader,
+                      trace=self.gpu_probe.trace)
+        if self.graphics_plan.active and self.graphics_plan.effect:
+            milestone('GRAPHICS_EFFECT_CREATE_BEGIN',theme=self.graphics_theme,mode=self.graphics_plan.mode,
+                      renderer=particle_renderer(self.gpu_probe,'fire' if self.graphics_theme == 'fire_arena' else 'electric'))
+        self.fire_particles = FireParticles(self.gpu_probe.custom_shader, self.gpu_probe.trace,
+                                            renderer=particle_renderer(self.gpu_probe,'fire')) if settings and settings.theme == 'fire_arena' and self.gpu_probe.fire and self.graphics_plan.effect else None
+        self.electric_probe = electric_probe_mode() if settings and settings.theme == 'electric_blue' and not self.graphics_plan.active else 'full'
+        self.electric_effects = ElectricEffects(self.electric_probe, self.gpu_probe.custom_shader, self.gpu_probe.trace,
+                                                renderer=particle_renderer(self.gpu_probe,'electric')) if settings and settings.theme == 'electric_blue' and self.gpu_probe.electric and self.graphics_plan.effect else None
+        if self.graphics_plan.active:
+            effect = self.fire_particles or self.electric_effects
+            milestone('GRAPHICS_EFFECT_READY' if effect else 'GRAPHICS_EFFECT_SKIPPED',
+                      theme=self.graphics_theme,mode=self.graphics_plan.mode,
+                      canvas=type(effect.canvas).__name__ if effect else 'none',
+                      custom_shader=effect.custom_shader if effect else False)
+        self._electric_slot = InstructionGroup() if self.electric_effects and self.electric_probe == 'deferred' else None
+        if self.electric_effects:
+            milestone('ELECTRIC_PROBE_MODE', mode=self.electric_probe)
         independent_background = bool(settings and getattr(settings, 'background_id', ''))
         loader = TEXTURES.texture if independent_background else load_texture
         background_texture = loader(settings.background) if settings and settings.background else None
@@ -61,7 +123,10 @@ class MatchScreen(FloatLayout):
             self.background = Rectangle(texture=background_texture)
             Color(0, 0, 0, .35 if background_texture else 0)
             self.background_shade = Rectangle()
+        self.probe_image = ProbeImage(selected_theme.layers[0],self.graphics_theme,self.graphics_plan.mode) if self.graphics_plan.simple_image and selected_theme.layers else None
         with self.canvas:
+            if self.graphics_plan.active:
+                Callback(first_gpu_marker('GRAPHICS_CANVAS_GPU_ENTER',theme=self.graphics_theme,mode=self.graphics_plan.mode))
             self.atmosphere = []
             for i in range(10):
                 Color(*self.theme.atmosphere_color, (.012+i*.002)*self.theme.glow_strength)
@@ -70,12 +135,38 @@ class MatchScreen(FloatLayout):
             self.field = Ellipse()
             self.ring = NeonRing(self.theme.palette, self.theme.glow_strength,
                                  self.theme.decorative_speed_degrees, self.theme.pulse_hz)
-            self.arena_layers = ArenaLayers(self.theme.layers)
+            if self.probe_image and self.probe_image.widget:
+                self.canvas.add(self.probe_image.widget.canvas)
+            if self.graphics_plan.active:
+                milestone('GRAPHICS_COMMON_CREATE_BEGIN',theme=self.graphics_theme,mode=self.graphics_plan.mode,
+                          enabled=self.graphics_plan.common)
+            self.arena_layers = ArenaLayers(selected_theme.layers if self.gpu_probe.raster and self.electric_probe != 'no_png' and self.graphics_plan.common else (),
+                                            trace=self.gpu_probe.trace)
+            if self.graphics_plan.active:
+                milestone('GRAPHICS_COMMON_READY',theme=self.graphics_theme,mode=self.graphics_plan.mode,
+                          layers=len(self.arena_layers.loaded),mesh_count=len(self.arena_layers.loaded))
+                if self.arena_layers.loaded:
+                    milestone('GRAPHICS_IMAGE_READY',theme=self.graphics_theme,mode=self.graphics_plan.mode,
+                              renderer='arena_raster',mask=True,rotation=True)
+                elif self.graphics_plan.image and self.graphics_plan.common:
+                    milestone('GRAPHICS_IMAGE_REJECTED',theme=self.graphics_theme,mode=self.graphics_plan.mode,
+                              reason=self.arena_layers.diagnostics)
             if self.fire_particles:
+                if self.gpu_probe.trace:
+                    Callback(first_gpu_marker('FIRE_CONTEXT_GPU_ENTER'))
                 self.canvas.add(self.fire_particles.canvas)
+                if self.gpu_probe.trace:
+                    Callback(first_gpu_marker('FIRE_CONTEXT_GPU_EXIT'))
             if self.electric_effects:
-                self.canvas.add(self.electric_effects.canvas)
-            self.effects = MatchEffects(self.theme.effects)
+                if self.gpu_probe.trace:
+                    Callback(first_gpu_marker('ELECTRIC_CONTEXT_GPU_ENTER'))
+                if self._electric_slot is not None:
+                    self.canvas.add(self._electric_slot)
+                elif self.electric_probe != 'png_only':
+                    self.canvas.add(self.electric_effects.canvas)
+                if self.gpu_probe.trace:
+                    Callback(first_gpu_marker('ELECTRIC_CONTEXT_GPU_EXIT'))
+            self.effects = QuietEffects() if self.graphics_plan.baseline else MatchEffects(self.theme.effects)
             colors = [(.04, .22, .48), (.76, .1, .11)]
             self.disk_shapes = [LogoDrawing(texture, color) for texture, color in zip(textures, colors)]
             Color(.8, .94, 1, .58)
@@ -86,6 +177,8 @@ class MatchScreen(FloatLayout):
             self.goal_frame = Line(width=2.2)
             self.posts = [Ellipse() for _ in range(2)]
             self.header_logos = [LogoDrawing(texture, color) for texture, color in zip(textures, colors)]
+            if self.graphics_plan.active:
+                Callback(first_gpu_marker('GRAPHICS_CANVAS_GPU_EXIT',theme=self.graphics_theme,mode=self.graphics_plan.mode))
         self.score = self.make_label(bold=True)
         self.minute_label = self.make_label(color=(.4, 1, .7, 1))
         self.team_names = [self.make_label(text=name, bold=True, shorten=True, shorten_from='right', halign='center')
@@ -114,13 +207,24 @@ class MatchScreen(FloatLayout):
         self.add_widget(self.back_button)
         self.bind(size=self.layout_scene, pos=self.layout_scene)
         self.layout_scene()
+        milestone('ARENA_CANVAS_READY', theme=settings.theme if settings else 'default',
+                  layers=len(self.arena_layers.loaded),
+                  fire=bool(self.fire_particles), electric=bool(self.electric_effects))
         self._first_frame = True
+        self._first_present = self._log_first_present
+        from kivy.core.window import Window
+        Window.bind(on_flip=self._first_present)
         self.clock_event = Clock.schedule_interval(self.update, 0)
+        milestone('MATCH_ANIMATION_STARTED', round=self.engine.round_id)
         if self.audio_session:
             self.audio_session.update(self.engine)
 
     def restart_match(self, *args):
         if self._disposed:
+            return
+        if self.settings and self.settings.record_video and self.on_restart:
+            # Every new match needs fresh user consent and a fresh projection.
+            self.on_restart()
             return
         play_button_sound()
         self.engine.restart()
@@ -135,8 +239,26 @@ class MatchScreen(FloatLayout):
             self.audio_session.update(self.engine)
 
     def dispose(self):
+        if self._disposed:
+            return
+        self.graphics_guard.check_thread()
+        if self.graphics_plan.active:
+            milestone('GRAPHICS_DISPOSE',theme=self.graphics_theme,mode=self.graphics_plan.mode)
         self._disposed = True
+        self.unbind(size=self.layout_scene, pos=self.layout_scene)
         self.clock_event.cancel()
+        if self._first_present:
+            from kivy.core.window import Window
+            Window.unbind(on_flip=self._first_present)
+            self._first_present = None
+        if self._capture_start_event:
+            self._capture_start_event.cancel()
+        if self.recording:
+            self.recording.stop()
+        if self._result_flip:
+            from kivy.core.window import Window
+            Window.unbind(on_flip=self._result_flip)
+            self._result_flip = None
         self.announcements.reset()
         if self.fire_particles:
             self.fire_particles.clear()
@@ -159,6 +281,9 @@ class MatchScreen(FloatLayout):
         self.layout_scene()
 
     def layout_scene(self, *_):
+        if self._disposed:
+            return
+        self.graphics_guard.check_thread()
         w, h = self.size
         self.background.pos, self.background.size = self.pos, self.size
         self.background_shade.pos, self.background_shade.size = self.pos, self.size
@@ -225,10 +350,18 @@ class MatchScreen(FloatLayout):
         return (self.center_arena[0] + x*self.scale, self.center_arena[1] + y*self.scale)
 
     def draw_scene(self):
+        if self._disposed:
+            return
+        self.graphics_guard.check_thread()
+        first_probe = self.graphics_plan.active and not self._probe_first_draw
+        if first_probe:
+            milestone('GRAPHICS_LAYOUT_BEGIN',theme=self.graphics_theme,mode=self.graphics_plan.mode)
         e, s = self.engine, self.scale
         g = e.goal
         self.ring.layout(g, self.project, s)
         self.arena_layers.layout(g, self.project)
+        if self.probe_image:
+            self.probe_image.layout(g,self.project)
         if self.fire_particles:
             self.fire_particles.draw(g, self.project)
         if self.electric_effects:
@@ -266,7 +399,7 @@ class MatchScreen(FloatLayout):
         home, away = e.teams
         self.score.text = f"{e.scores[home]} - {e.scores[away]}"
         self.minute_label.text = f"{e.minute}'"
-        self.notice.text = str(max(1, ceil(e.countdown))) if e.state == 'countdown' else ''
+        self.notice.text = str(max(1, ceil(e.countdown))) if e.state == 'countdown' and not self._capture_waiting else ''
         for team, indicator in zip(e.teams, self.card_indicators):
             indicator.set_counts(sum(c.team == team and c.kind == 'yellow_card' for c in e.cards),
                                  sum(c.team == team and c.kind == 'red_card' for c in e.cards))
@@ -277,15 +410,51 @@ class MatchScreen(FloatLayout):
             if snapshot != self._result_snapshot:
                 self.result_panel.set_result(e.scores, e.goals, e.cards)
                 self._result_snapshot = snapshot
+            if self.recording and self.recording.state == 'recording' and not self.recording.results_seen and not self._result_flip:
+                from kivy.core.window import Window
+                def presented(*_):
+                    Window.unbind(on_flip=presented)
+                    self._result_flip = None
+                    if not self._disposed:
+                        self.recording.results_visible()
+                self._result_flip = presented
+                Window.bind(on_flip=presented)
         self.restart_button.opacity = 1 if e.can_restart else 0
         self.restart_button.disabled = not e.can_restart
+        if first_probe:
+            try:
+                audit_view(self)
+            except (ValueError,TypeError,OverflowError) as error:
+                milestone('GRAPHICS_AUDIT_REJECTED',theme=self.graphics_theme,mode=self.graphics_plan.mode,reason=str(error))
+                raise
+            self._probe_first_draw = True
+            milestone('GRAPHICS_LAYOUT_READY',theme=self.graphics_theme,mode=self.graphics_plan.mode,
+                      arena_center=self.center_arena,radius=self.radius)
 
     def update(self, dt):
         if self._disposed:
             return
+        self.graphics_guard.check_thread()
+        if self.graphics_plan.active and not self._probe_first_update:
+            self._probe_first_update = True
+            milestone('GRAPHICS_FIRST_UPDATE',theme=self.graphics_theme,mode=self.graphics_plan.mode)
         # Exclude synchronous preload time from the first simulation tick.
         if self._first_frame:
             dt, self._first_frame = 0., False
+        if self.recording and not self._capture_started and self.engine.state == 'countdown':
+            if self._capture_waiting:
+                return
+            if dt+self.engine.accumulator >= self.engine.countdown-1e-9:
+                # A slow render frame may cover a large part of the countdown.
+                # Consume only that countdown time now, keeping the final fixed
+                # ticks behind the first-frame acknowledgement (no blank seconds).
+                self.engine.advance(max(0., self.engine.countdown-self.engine.accumulator-2*FIXED_DT))
+                self._capture_waiting = True
+                self.notice.text = ''
+                # Let this frame remove the countdown before attaching the
+                # virtual display surface. No simulation time accumulates here.
+                self._capture_start_event = Clock.schedule_once(self._start_capture, 0)
+                return
         self.engine.advance(dt)
         finished = self.engine.state == 'finished'
         if not finished:
@@ -320,3 +489,36 @@ class MatchScreen(FloatLayout):
                 and (self.fire_particles is None or self.fire_particles.idle)
                 and (self.electric_effects is None or self.electric_effects.idle)):
             self.clock_event.cancel()
+
+    def _start_capture(self, *_):
+        if self._disposed or not self.recording or self._capture_request_sent:
+            return
+        self._capture_request_sent = True
+        self.recording.start(self._capture_acknowledged)
+
+    def _log_first_present(self, *_):
+        self.graphics_guard.check_thread()
+        if self._first_present:
+            from kivy.core.window import Window
+            Window.unbind(on_flip=self._first_present)
+            self._first_present = None
+            if not self._disposed:
+                milestone('MATCH_FIRST_FRAME_PRESENTED')
+                if self.graphics_plan.active:
+                    milestone('GRAPHICS_FIRST_FRAME',theme=self.graphics_theme,mode=self.graphics_plan.mode)
+                if self._electric_slot is not None:
+                    # Controlled isolation only: full electricity begins on the
+                    # next frame, at its original place behind logos and goal.
+                    self._electric_slot.add(self.electric_effects.canvas)
+                    milestone('ELECTRIC_DEFERRED_ATTACHED')
+
+    def _capture_acknowledged(self, success):
+        if self._disposed:
+            return
+        self._capture_waiting = False
+        self._capture_started = True
+        if not success:
+            self.recording = None
+        # The engine's existing start event/whistle follows the first encoded
+        # frame. Native encoder latency never becomes a catch-up physics tick.
+        self._first_frame = True

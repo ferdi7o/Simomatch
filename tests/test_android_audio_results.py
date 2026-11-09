@@ -210,15 +210,23 @@ def test_team_slider_duration_test_edit_and_cleanup(music, tmp_path):
 def test_android_media_player_seek_uses_integer_milliseconds(monkeypatch):
     calls = []
     player = SimpleNamespace(setDataSource=lambda _:None, prepare=lambda:None,
+                             setAudioAttributes=lambda value:attributes.append(value),
                              getDuration=lambda:40000, release=lambda:None,
                              setOnSeekCompleteListener=lambda _:None,
                              seekTo=lambda *args:calls.append(args))
     jnius = ModuleType('jnius')
     jnius.PythonJavaClass = object
     jnius.java_method = lambda signature:lambda method:method
-    jnius.autoclass = lambda name:(lambda:player) if name == 'android.media.MediaPlayer' else SimpleNamespace(SDK_INT=35)
+    attributes = []
+    builder = SimpleNamespace(setUsage=lambda value:attributes.append(('usage',value)),
+                              setAllowedCapturePolicy=lambda value:attributes.append(('policy',value)),
+                              build=lambda:'capture-allowed-media')
+    jnius.autoclass = lambda name: ((lambda:player) if name == 'android.media.MediaPlayer' else
+                                  (lambda:builder) if name == 'android.media.AudioAttributes$Builder' else
+                                  SimpleNamespace(SDK_INT=35))
     monkeypatch.setitem(sys.modules, 'jnius', jnius)
     sound = AndroidMusic('/fake/music.mp3')
+    assert attributes == [('usage',1),('policy',1),'capture-allowed-media']
     sound.seek(13)
     assert calls == [(13000, 3)] and isinstance(calls[0][0], int)
     assert not sound.seek_ready

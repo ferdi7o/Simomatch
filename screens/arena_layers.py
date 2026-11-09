@@ -3,10 +3,13 @@
 Artists supply transparent full-ring PNG/WebP atlases. Textures and up to 64
 frame regions are loaded once; at most 3 meshes render, with a live goal gap.
 """
-from math import sin, cos, pi, radians
+from math import sin, cos, pi, radians, isfinite
 from pathlib import Path
-from kivy.graphics import Color, Mesh
+from kivy.graphics import Color, Mesh, Callback
 from services.media import load_texture
+from screens.mesh_safety import MeshGuard
+from services.graphics_diagnostics import milestone
+from services.arena_gpu_probe import first_gpu_marker
 
 
 class ArenaLayers:
@@ -16,10 +19,12 @@ class ArenaLayers:
     MAX_ATLAS_PIXELS = 4*1024*1024
     SEGMENTS = 96
 
-    def __init__(self, definitions=(), loader=load_texture, root=None):
+    def __init__(self, definitions=(), loader=load_texture, root=None, trace=False):
         self.time = 0.
+        self.guard = MeshGuard('arena_raster')
         self.loaded, self.missing_assets, self.diagnostics = [], [], {}
         self.layer_colors = []
+        self.source_textures = []
         root = Path(root or Path(__file__).resolve().parents[1])
         self.indices = [j for i in range(self.SEGMENTS)
                         for j in (2*i, 2*i+1, 2*i+2, 2*i+1, 2*i+3, 2*i+2)]
@@ -35,7 +40,7 @@ class ArenaLayers:
                 texture = loader(path)
                 if texture is None:
                     raise ValueError('Efekt görseli bulunamadı veya çözülemedi.')
-                if max(texture.size) > self.MAX_ATLAS_EDGE or texture.width*texture.height > self.MAX_ATLAS_PIXELS:
+                if min(texture.size) <= 0 or max(texture.size) > self.MAX_ATLAS_EDGE or texture.width*texture.height > self.MAX_ATLAS_PIXELS:
                     raise ValueError('Efekt atlası en fazla 4096 kenar ve 4 megapiksel olmalıdır.')
                 if texture.width % definition.columns or texture.height % definition.rows:
                     raise ValueError('Atlas ölçüleri satır/sütun sayısına bölünmelidir.')
@@ -49,9 +54,19 @@ class ArenaLayers:
                                (definition.rows-1-i//definition.columns)*height, width, height)
                                for i in range(definition.frames))
                 color = Color(1, 1, 1, max(0, min(1, definition.opacity)))
-                mesh = Mesh(vertices=[], indices=self.indices, texture=frames[0], mode='triangles')
+                if trace:
+                    Callback(first_gpu_marker('RASTER_GPU_ENTER', asset=path.name))
+                # Keep the topology valid even before the first layout/render.
+                # Indices become drawable only after all referenced vertices exist.
+                mesh = Mesh(vertices=[], indices=[], texture=frames[0], mode='triangles',
+                            fmt=[(b'vPosition', 2, 'float'), (b'vTexCoords0', 2, 'float')])
+                if trace:
+                    Callback(first_gpu_marker('RASTER_GPU_EXIT', asset=path.name))
+                self.source_textures.append(texture)
                 self.loaded.append((definition, mesh, frames))
                 self.layer_colors.append(color)
+                milestone('RASTER_LAYOUT_READY', asset=path.name, size=tuple(texture.size),
+                          stride_bytes=16, vertices=194, indices=len(self.indices))
             except Exception as exc:
                 self.missing_assets.append(str(path))
                 self.diagnostics[str(path)] = str(exc)
@@ -61,15 +76,19 @@ class ArenaLayers:
 
     def layout(self, goal, project):
         """Read geometry only; omit the exact physical opening from every mesh."""
+        self.guard.check_thread()
         start = goal.angle+goal.half_angle
         length = 2*pi-2*goal.half_angle
         for (definition, mesh, frames), color in zip(self.loaded, self.layer_colors):
-            mesh.texture = frames[int(self.time*definition.fps) % len(frames)]
-            uv = mesh.texture.tex_coords
+            frame = frames[int(self.time*definition.fps) % len(frames)]
+            uv = frame.tex_coords
+            if len(uv) != 8 or not all(isfinite(value) for value in uv):
+                milestone('MESH_REJECTED', mesh='arena_raster', reason='Invalid texture coordinates')
+                continue
             phase = radians(definition.rotation_degrees)*self.time
             pulse = max(0., min(1., definition.pulse_depth))
-            color.a = max(0., min(1., definition.opacity))*(1-pulse*.5+pulse*.5*sin(self.time*2*pi*definition.pulse_hz))
-            width, height = mesh.texture.size
+            opacity = max(0., min(1., definition.opacity))*(1-pulse*.5+pulse*.5*sin(self.time*2*pi*definition.pulse_hz))
+            width, height = frame.size
             source_radius = definition.source_radius_pixels or min(width, height)*.5/definition.outer_scale
             center_x, center_y = definition.source_center_pixels or (width/2, height/2)
             vertices = []
@@ -85,4 +104,6 @@ class ArenaLayers:
                     tu = (1-v)*((1-u)*uv[0]+u*uv[2])+v*((1-u)*uv[6]+u*uv[4])
                     tv = (1-v)*((1-u)*uv[1]+u*uv[3])+v*((1-u)*uv[7]+u*uv[5])
                     vertices.extend((x, y, tu, tv))
-            mesh.vertices = vertices
+            if self.guard.upload(mesh, vertices, self.indices, 4):
+                mesh.texture = frame
+                color.a = opacity

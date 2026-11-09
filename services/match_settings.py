@@ -19,6 +19,7 @@ class MatchSettings:
     goal_speed_degrees: float = GOAL_SPEED_DEGREES
     goal_size_percent: float = GOAL_SIZE_PERCENT
     background_id: str = ''  # Empty preserves legacy theme/background behavior.
+    record_video: bool = False
 
     def __post_init__(self):
         if self.background_id and self.background_id not in BACKGROUNDS:

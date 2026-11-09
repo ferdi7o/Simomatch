@@ -9,6 +9,8 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.modalview import ModalView
 from kivy.uix.widget import Widget
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.switch import Switch
+from services.video_recording import RecordingPreference
 from screens.common import Page
 from screens.setup_controls import (BG, ACCENT, MUTED, Surface, Action, label,
                                     ChoiceValue, NeonSlider, DurationInput, ThemeTile, TeamRow, SettingHeading,
@@ -17,6 +19,8 @@ from services.media import load_texture
 from services.match_settings import MatchSettings, THEMES
 from services.backgrounds import BACKGROUNDS, DEFAULT_BACKGROUND, BackgroundPreferences, TEXTURES
 from services.custom_backgrounds import CustomBackgroundStore
+from services.graphics_probe import GraphicsProbeSettings
+from screens.graphics_probe_panel import refresh_probe_button, open_probe_panel
 from config import (DISK_RADIUS, MIN_DISK_RADIUS, MAX_DISK_RADIUS, GOAL_SPEED_DEGREES,
                     MIN_GOAL_SPEED_DEGREES, MAX_GOAL_SPEED_DEGREES,
                     GOAL_SIZE_PERCENT, MIN_GOAL_SIZE_PERCENT, MAX_GOAL_SIZE_PERCENT)
@@ -27,6 +31,9 @@ class SetupScreen(Page):
         super().__init__(router, 'MAÇ OLUŞTUR', **kwargs)
         self.selected_ids = [None, None]
         data_dir = getattr(router, 'background_data_dir', getattr(router.store, 'root', None))
+        self.recording_preference = RecordingPreference(data_dir)
+        self.graphics_probe = GraphicsProbeSettings(data_dir)
+        self.probe_dialog = None
         self.preferences = BackgroundPreferences(data_dir)
         legacy = BackgroundPreferences(getattr(router.store, 'root', None))
         if self.preferences.path and not self.preferences.path.exists():
@@ -170,6 +177,9 @@ class SetupScreen(Page):
             gallery.add_widget(tile)
         self.theme_scroll.add_widget(gallery)
         self.content.add_widget(self.theme_scroll)
+        self.graphics_probe_button = Action('GPU Teşhis Modu', lambda:open_probe_panel(self),
+                                            height=dp(38),font_size=dp(10))
+        self.content.add_widget(self.graphics_probe_button)
         self.update_theme()
 
         self.content.add_widget(label('ARKA PLAN', height=24, bold=True))
@@ -221,6 +231,16 @@ class SetupScreen(Page):
             self.save_preferences()
         self.start_button = Action('MAÇI BAŞLAT', self.start_match, primary=True, height=dp(48), font_size=dp(14))
         self.shell.add_widget(self.start_button, index=1)
+        recording = Surface(orientation='horizontal', size_hint_y=None, height=dp(58), padding=dp(8))
+        text = BoxLayout(orientation='vertical')
+        text.add_widget(label('MAÇ VİDEOSUNU KAYDET', height=20, bold=True, font_size=dp(10)))
+        text.add_widget(label('Android · Sessiz MP4' if router.video.platform == 'android' else
+                              'Yalnızca Android · Sessiz MP4', height=18, font_size=dp(10), color=MUTED))
+        recording.add_widget(text)
+        self.record_switch = Switch(active=self.recording_preference.enabled, size_hint_x=None, width=dp(64))
+        self.record_switch.bind(active=self.set_recording)
+        recording.add_widget(self.record_switch)
+        self.shell.add_widget(recording, index=2)
         self.content.add_widget(Action('TAKIM OLUŞTUR', lambda: router.go('teams'), height=dp(34)))
         self.bind(size=self.responsive)
         self.responsive()
@@ -231,6 +251,16 @@ class SetupScreen(Page):
         left, top, right, bottom = getattr(self, 'safe_insets', (0, 0, 0, 0))
         self.shell.padding = (inset+left, dp(10)+top, inset+right, dp(20)+bottom)
         self.columns.height = min(dp(530), max(dp(444), self.width*.62+dp(170)))
+
+    def set_recording(self, _, enabled):
+        try:
+            self.recording_preference.save(enabled)
+            if enabled:
+                self.status.text = ('Oyun sesi için ses izni, her maç için ekran kaydı izni istenir. Mikrofon kullanılmaz.'
+                                    if self.router.video.platform == 'android' else
+                                    'Video kaydı yalnızca Android üzerinde destekleniyor; Windows maçı kayıtsız başlar.')
+        except OSError:
+            self.status.text = 'Kayıt tercihi saklanamadı; bu maçta kullanılabilir.'
 
     def configure_music(self, index, team):
         self.stop_music_test(index)
@@ -349,6 +379,7 @@ class SetupScreen(Page):
         self.duration_input.last_valid = int(self.duration_input.text)
 
     def update_theme(self, *_):
+        refresh_probe_button(self)
         for key, tile in self.theme_tiles.items():
             tile.selected = key == self.theme.text
         if not self._loading_preferences:
@@ -492,6 +523,8 @@ class SetupScreen(Page):
             self.team_dialog = None
 
     def on_pre_leave(self, *_):
+        if self.probe_dialog:
+            self.probe_dialog.dismiss()
         self.stop_music_test()
         self.flush_music_settings()
         self.preview_trigger.cancel()
@@ -580,7 +613,8 @@ class SetupScreen(Page):
                                      background=self.background_path,
                                      goal_speed_degrees=self.goal_speed_slider.value,
                                      goal_size_percent=self.goal_size_slider.value,
-                                     background_id=self.background_choice.text)
+                                     background_id=self.background_choice.text,
+                                     record_video=self.record_switch.active)
             self.router.start_match(settings)
         except (ValueError, OSError) as exc:
             self.status.text = str(exc) if str(exc) else 'Geçerli bir maç süresi girin.'

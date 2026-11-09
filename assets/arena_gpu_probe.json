@@ -1,0 +1,9 @@
+{
+  "raster": true,
+  "fire": true,
+  "electric": true,
+  "custom_shader": true,
+  "trace": false,
+  "fire_renderer": "auto",
+  "electric_renderer": "auto"
+}

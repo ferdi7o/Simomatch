@@ -6,8 +6,28 @@ Absolute slot timelines and private per-slot RNG keep lifetime/morphing FPS-safe
 from dataclasses import dataclass, field
 from math import sin, cos, pi, hypot
 import random
-from kivy.graphics import RenderContext, Mesh
+import json
+from pathlib import Path
+from kivy.graphics import RenderContext, Mesh, Canvas, Color, Callback
 from screens.fire_particles import goal_normals, visibility, outside_goal
+from screens.mesh_safety import MeshGuard
+from services.graphics_diagnostics import milestone
+from services.arena_gpu_probe import first_gpu_marker
+from screens.particle_texture_batch import ParticleTextureBatch
+
+PROBE_MODES = ('full', 'png_only', 'triangle', 'no_png', 'deferred')
+
+
+def electric_probe_mode(path=None):
+    """Packaged, explicit diagnostic switch; never stored in user/team data."""
+    path = Path(path) if path else Path(__file__).resolve().parents[1]/'assets/electric_gpu_probe.json'
+    try:
+        mode = json.loads(path.read_text(encoding='utf8')).get('mode', 'full')
+        if mode in PROBE_MODES:
+            return mode
+    except (OSError, ValueError, AttributeError):
+        pass
+    return 'full'
 
 
 @dataclass(slots=True)
@@ -162,21 +182,43 @@ class ElectricPool:
 
 
 class ElectricEffects:
-    def __init__(self):
+    def __init__(self, probe_mode='full', custom_shader=True, trace=False, renderer=None):
+        self.guard = MeshGuard('electric')
+        self.texture_batch = None
+        self.custom_shader = custom_shader
+        self.probe_mode = probe_mode
         self.pool = ElectricPool()
         self.round_id = None
-        self.canvas = RenderContext(use_parent_projection=True, use_parent_modelview=True)
-        self.canvas.shader.vs = '''$HEADER$
+        if renderer == 'texture':
+            self.custom_shader = False
+            self.texture_batch = ParticleTextureBatch('electric',self.guard,trace)
+            self.canvas, self.mesh = self.texture_batch.canvas,self.texture_batch.mesh
+            return
+        if renderer == 'flat_probe':
+            self.custom_shader = custom_shader = False
+        if custom_shader:
+            self.canvas = RenderContext(use_parent_projection=True, use_parent_modelview=True)
+            self.canvas.shader.vs = '''$HEADER$
 attribute vec4 particle_color;
 void main() {
     frag_color = particle_color * vec4(1.0, 1.0, 1.0, opacity);
     gl_Position = projection_mat * modelview_mat * vec4(vPosition, 0.0, 1.0);
 }'''
-        self.canvas.shader.fs = '''$HEADER$
+            self.canvas.shader.fs = '''$HEADER$
 void main() { gl_FragColor = frag_color; }'''
+        else:
+            self.canvas = Canvas()
         with self.canvas:
+            if not custom_shader:
+                Color(.15, .8, 1, .3)
+            if trace:
+                Callback(first_gpu_marker('ELECTRIC_MESH_GPU_ENTER'))
             self.mesh = Mesh(vertices=[], indices=[], mode='triangles',
-                             fmt=[(b'vPosition', 2, 'float'), (b'particle_color', 4, 'float')])
+                             fmt=([(b'vPosition', 2, 'float'), (b'particle_color', 4, 'float')] if custom_shader else
+                                  [(b'vPosition', 2, 'float'), (b'vTexCoords0', 2, 'float')]))
+            if trace:
+                Callback(first_gpu_marker('ELECTRIC_MESH_GPU_EXIT'))
+        milestone('ELECTRIC_SHADER_READY', success=bool(self.canvas.shader.success) if custom_shader else 'stock_probe', mode=probe_mode)
 
     @property
     def idle(self):
@@ -189,6 +231,16 @@ void main() { gl_FragColor = frag_color; }'''
         self.pool.advance(dt, emitting=engine.state != 'finished')
 
     def draw(self, goal, project):
+        self.guard.check_thread()
+        if self.probe_mode == 'triangle':
+            # Same RenderContext, shader and 24-byte format, minimal topology.
+            a = goal.angle+pi
+            cx, cy = goal.radius*cos(a), goal.radius*sin(a)
+            vertices = []
+            for dx, dy in ((-8, -8), (8, -8), (0, 8)):
+                vertices.extend((*project(cx+dx, cy+dy), .15, .85, 1., .8))
+            self._upload(vertices,[0,1,2])
+            return
         vertices, indices = [], []
         normals = goal_normals(goal)
 
@@ -252,11 +304,21 @@ void main() { gl_FragColor = frag_color; }'''
             for i in range(4):
                 emit([(x, y, .65, .95, 1, alpha), (*points[i], .1, .5, 1, 0),
                       (*points[(i+1) % 4], .1, .5, 1, 0)])
-        self.mesh.vertices, self.mesh.indices = vertices, indices
+        self._upload(vertices,indices)
+
+    def _upload(self, vertices, indices):
+        if self.texture_batch:
+            self.texture_batch.upload(vertices,indices)
+        else:
+            self.guard.upload_colors(self.mesh,vertices,indices,self.custom_shader)
 
     def apply_brightness(self, layer_colors):
+        self.guard.check_thread()
         for color in layer_colors:
             color.a = min(.96, color.a+self.pool.brightness_boost)
 
     def clear(self):
-        self.mesh.vertices, self.mesh.indices = [], []
+        if self.texture_batch:
+            self.texture_batch.clear()
+        else:
+            self.guard.upload_colors(self.mesh, [], [], self.custom_shader)

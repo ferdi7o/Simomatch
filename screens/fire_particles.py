@@ -2,7 +2,10 @@
 from dataclasses import dataclass, field
 from math import cos, sin, pi, hypot
 import random
-from kivy.graphics import RenderContext, Mesh
+from kivy.graphics import RenderContext, Mesh, Canvas, Color, Callback
+from screens.mesh_safety import MeshGuard
+from services.arena_gpu_probe import first_gpu_marker
+from screens.particle_texture_batch import ParticleTextureBatch
 
 
 @dataclass(slots=True)
@@ -144,23 +147,42 @@ def outside_goal(triangle, goal, normals=None):
 
 
 class FireParticles:
-    def __init__(self):
+    def __init__(self, custom_shader=True, trace=False, renderer=None):
+        self.guard, self.custom_shader = MeshGuard('fire'), custom_shader
+        self.texture_batch = None
         self.pool = FlamePool()
         self.round_id = None
+        if renderer == 'texture':
+            self.custom_shader = False
+            self.texture_batch = ParticleTextureBatch('fire',self.guard,trace)
+            self.canvas, self.mesh = self.texture_batch.canvas,self.texture_batch.mesh
+            return
+        if renderer == 'flat_probe':
+            self.custom_shader = custom_shader = False
         # Created outside a parent Canvas context, then explicitly inserted
         # behind posts and logos. GLES2-compatible vertex colors, one batch.
-        self.canvas = RenderContext(use_parent_projection=True, use_parent_modelview=True)
-        self.canvas.shader.vs = '''$HEADER$
+        if custom_shader:
+            self.canvas = RenderContext(use_parent_projection=True, use_parent_modelview=True)
+            self.canvas.shader.vs = '''$HEADER$
 attribute vec4 particle_color;
 void main() {
     frag_color = particle_color * vec4(1.0, 1.0, 1.0, opacity);
     gl_Position = projection_mat * modelview_mat * vec4(vPosition, 0.0, 1.0);
 }'''
-        self.canvas.shader.fs = '''$HEADER$
+            self.canvas.shader.fs = '''$HEADER$
 void main() { gl_FragColor = frag_color; }'''
+        else:
+            self.canvas = Canvas()
         with self.canvas:
+            if not custom_shader:
+                Color(1, .45, .08, .3)
+            if trace:
+                Callback(first_gpu_marker('FIRE_MESH_GPU_ENTER'))
             self.mesh = Mesh(vertices=[], indices=[], mode='triangles',
-                             fmt=[(b'vPosition', 2, 'float'), (b'particle_color', 4, 'float')])
+                             fmt=([(b'vPosition', 2, 'float'), (b'particle_color', 4, 'float')] if custom_shader else
+                                  [(b'vPosition', 2, 'float'), (b'vTexCoords0', 2, 'float')]))
+            if trace:
+                Callback(first_gpu_marker('FIRE_MESH_GPU_EXIT'))
 
     @property
     def idle(self):
@@ -173,6 +195,7 @@ void main() { gl_FragColor = frag_color; }'''
         self.pool.advance(dt, emitting=engine.state != 'finished')
 
     def draw(self, goal, project):
+        self.guard.check_thread()
         vertices, indices = [], []
         normals = goal_normals(goal)
         for particle in self.pool.particles:
@@ -209,7 +232,13 @@ void main() { gl_FragColor = frag_color; }'''
                         vertices.extend((px, py, r, g, b, a))
                     for i in range(1, len(clipped)-1):
                         indices.extend((start, start+i, start+i+1))
-        self.mesh.vertices, self.mesh.indices = vertices, indices
+        if self.texture_batch:
+            self.texture_batch.upload(vertices,indices)
+        else:
+            self.guard.upload_colors(self.mesh, vertices, indices, self.custom_shader)
 
     def clear(self):
-        self.mesh.vertices, self.mesh.indices = [], []
+        if self.texture_batch:
+            self.texture_batch.clear()
+        else:
+            self.guard.upload_colors(self.mesh, [], [], self.custom_shader)
